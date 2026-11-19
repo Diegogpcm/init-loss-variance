@@ -231,6 +231,54 @@ Share of KL_param visible through m inputs (linear model; the 32-wide nets, wher
 - Conclusion: for Gaussian posteriors at the σ that gives good bounds, re-measuring the KL in function space saves
   little. Gains must come from the prior and from the posterior family, not from where the KL is measured.
 
+### Normalization in PAC-Bayes: BatchNorm with statistics as parameters, and invariance-aware KL
+
+[`experiments/pacbayes_norm.py`](experiments/pacbayes_norm.py) (PyTorch). Setup: Fashion-MNIST with n = 55k, depth-2
+ReLU MLPs, a data-free prior N(m₀, σ₀²), and a Gaussian posterior trained 50 epochs. The certificate is PAC-Bayes-kl
+with δ = 0.025, plus the Langford–Caruana correction for estimating the Gibbs error from M = 150 posterior samples
+(δ' = 0.01). Full tables: [`results/v2/norm_summary.md`](results/v2/norm_summary.md).
+
+**Making BatchNorm i.i.d.-compatible.** Training-mode BN couples the examples in a batch, and inference-mode running
+statistics make the weights → classifier map depend on S. Workarounds:
+- `bn_stat` (preferred): the inference-mode statistics (m_j, log s_j) are **posterior parameters** with a data-free
+  prior N(0, 0.5²). Phase 1 trains with batch statistics. Phase 2 freezes them into the posterior (trainable mean and
+  sd) and fine-tunes in inference mode, so the statistics see the weight noise. The classifier is a per-example network,
+  and (x·W_j − m_j)/s_j is *exactly* invariant to scaling (W_j, m_j, s_j) by c > 0.
+- `bn_param`: naive version, with statistics frozen after training and a fixed sd. Kept as a baseline.
+- `bn_ref`: statistics recomputed for each sampled weight vector on a held-out *unlabeled* reference set (virtual BN).
+  It works, but needs held-out inputs.
+
+**Invariance-aware KL.** If rescaling the weights leaves every classifier unchanged, Q and its rescaled Q_t give the same
+Gibbs classifier, so the certificate may use min_t KL(Q_t‖P). The invariances used: ReLU per-unit homogeneity,
+LN per-layer scale, BN per-unit scale. Empirical risk is always evaluated with Q_t's own samples. `inv` trains t jointly
+with (μ, σ); "post-hoc" minimizes over t after plain training.
+
+Certificate (and KL, nats). `plain` → `inv`:
+
+| σ₀ | width | none | LayerNorm | BN, reference set | BN stats naive | **BN stats as params** |
+|---|---|---|---|---|---|---|
+| 0.02 | 64 | 0.627 → 0.568 (2294 → 1540) | 0.628 → 0.569 (2079 → 1097) | 0.607 → 0.559 (2238 → 1038) | 0.620 (2611) | 0.599 → **0.529** (1761 → **775**) |
+| 0.02 | 128 | 0.619 → 0.610 (2835 → 1922) | 0.626 → 0.561 (2729 → 1242) | 0.632 → 0.558 (3227 → 1136) | 0.628 (4162) | 0.595 → **0.515** (2378 → **949**) |
+| 0.05 | 64 | 0.553 → 0.521 (1753 → 1162) | 0.567 → 0.518 (1528 → 1018) | 0.548 → **0.514** (1663 → 1060) | 0.586 (2335) | 0.541 → 0.519 (1402 → **803**) |
+| 0.05 | 128 | 0.641 → 0.570 (3192 → 2024) | 0.606 → 0.537 (2257 → 1153) | 0.573 → 0.527 (2580 → 1169) | 0.618 (3513) | 0.580 → 0.537 (2386 → 1112) |
+
+Ordinary training (Adam, 20 epochs, 3 seeds), test error at widths 64 / 128: none 0.113 / 0.111, LN 0.115 / 0.111,
+**BN 0.111 / 0.108**, BN with a reference set 0.115 / 0.108. BN is slightly but consistently best.
+
+- **BN with statistics as parameters, trained with the invariance-aware KL, gives the lowest KL in every setting and the
+  best certificate at σ₀ = 0.02** (0.515 at width 128). It needs no held-out data, and its frozen statistics cost only
+  about 220–360 nats (plain runs). The naive version is the worst BN variant.
+- **Training with the invariance-aware KL** cuts the KL by 30–65% and the certificate by up to 0.08, for every
+  normalization including none (ReLU homogeneity). **Post-hoc rescaling saves under 1%**. The gain comes from giving the
+  optimizer the rescalings as free parameters (a better path to a lower-KL posterior), not from removing nats wasted
+  along invariant directions.
+- With rescaling, normalized networks certify better than plain ones at width 128 (0.52–0.54 vs 0.57–0.61). At width 64
+  the differences are mostly within noise.
+- The certificates here include the Monte Carlo sampling correction, so they are not comparable to the function-space
+  KL runs above, which omit it.
+- Caveat: in the first `bn_stat` batch, the per-run "statistics KL" of `inv` runs was computed on unrescaled parameters
+  (fixed in the code since). Total KLs and certificates are unaffected.
+
 ## Next steps (proposed)
 
 1. **Move to PyTorch and NAS-Bench-201 / NATS-Bench** (the main literature benchmark) so the numbers compare directly with CVU, ZiCo and others, and to test the CVU sign flip.
