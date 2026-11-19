@@ -83,9 +83,16 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
 - BN in PAC-Bayes: statistics as parameters preferred over reference sets (no held-out data).
 - Data-dependent priors via sample splitting: avoided (author's paper excludes them; Picard-Weibel critique).
 
-## Next steps (as of end of 2026-11-19)
-1. Collect the width-128 round-3 variational results from kipchoge (`results/v2/r3_var_klinv{,01}.jsonl`;
-   `python experiments/summarize_seeds.py norm <files>`) and add them to experiments.md E-r3.
+## 2026-11-19 evening
+23. **Round 3 complete.** Author asked whether the implicit (exact kl⁻¹) optimization makes f_quad and similar
+    obsolete. Agreed for training objectives (exact kl⁻¹ ≥ f_quad in 8/8 settings, 7 strictly), with two caveats: the
+    0-1 target (eq. 9) helps only for BN-statistics models and hurts plain networks (KL explodes); "optimal" holds for
+    the function being optimized, not for the stochastic, non-convex optimization or for bounds outside PAC-Bayes-kl.
+    Hypothesis for the plain-network failure: without the invariance-aware rescalings, reducing 0-1 error needs large,
+    fully charged weight moves.
+
+## Next steps (as of 2026-11-19 evening)
+1. Diagnose klinv01 on plain networks: track m and KL during training; plain network + invariance-aware KL + klinv01.
 2. Accuracy objective for LN and reference-set BN, and with σ₀ ∈ {0.1}; longer training.
 3. Why do plain networks not benefit from klinv01 while bn_stat does? (KL blows up to 6,500; check the m ratio and
    the rolling average.)

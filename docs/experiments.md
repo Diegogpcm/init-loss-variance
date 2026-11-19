@@ -16,7 +16,7 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-normdet | Ordinary training: none / LN / BN | `pacbayes_norm.py --deterministic` | `results/v2/norm_deterministic.jsonl` | final |
 | E-r1 | Pull-to-init sweep, hybrid fine-tuning, 3 seeds; variational seeds | `pacbayes_sgd.py --grid custom --finetune`, `pacbayes_norm.py --seeds`, `summarize_seeds.py` | `results/v2/sgd_r1_wdsweep.jsonl`, `sgd_r1_summary.md`, `pacbayes_norm_seeds.jsonl`, `norm_seeds_summary.md` | final |
 | E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl`, `r2a_summary.md`, `r2b_summary.md` | final |
-| E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | partial: hybrid and width-64 variational final; width-128 variational were still running on kipchoge at 19:16 |
+| E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | final (`objectives_summary.md`) |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -213,8 +213,8 @@ surrogate objective, not the posterior family, limited variational training.
 
 `klinv`: exact kl⁻¹ of the bound on the bounded CE (implicit-function gradients). `klinv01`: García-Pérez et al.
 (2025, eq. 9), kl⁻¹ at the rolling 0-1 risk with gradient m·∇L_xe (straight-through). Status at 19:16, 2026-11-19:
-hybrid complete; variational complete for width 64 only (width 128 were still running in tmux `lv_r3` on kipchoge;
-outputs `results/v2/r3_var_klinv{,01}.jsonl` there).
+all 60 runs complete (width-128 variational collected 20:42). Full comparison of the four objectives:
+`results/v2/objectives_summary.md`.
 
 **Variational, inv mode, width 64:**
 
@@ -245,3 +245,22 @@ Findings:
   0.394; KL up to 6,500, larger seed variance), while bn_stat gains 0.016 over the exact kl⁻¹ and has tiny seed variance.
 - With the accuracy objective, pure variational bn_stat matches the SGD hybrid (0.348 vs 0.347): the SGD warm start is
   no longer needed for BN networks.
+
+### Objective comparison, all settings (variational, inv mode, 3 seeds)
+
+| model | width | σ₀ | McAllester | f_quad | kl⁻¹, CE target (eq. 8) | kl⁻¹, 0-1 target (eq. 9) |
+|---|---|---|---|---|---|---|
+| bn_stat | 64 | 0.02 | 0.397 | 0.383 | 0.372 | **0.358** |
+| bn_stat | 64 | 0.05 | 0.395 | 0.379 | 0.364 | **0.348** |
+| bn_stat | 128 | 0.02 | 0.398 | 0.387 | 0.375 | **0.366** |
+| bn_stat | 128 | 0.05 | 0.411 | 0.396 | 0.372 | **0.366** |
+| none | 64 | 0.02 | 0.472 | 0.470 | **0.446** | 0.462 |
+| none | 64 | 0.05 | 0.417 | 0.404 | **0.394** | 0.398 |
+| none | 128 | 0.02 | 0.491 | 0.490 | **0.474** | 0.492 |
+| none | 128 | 0.05 | 0.451 | 0.450 | 0.452 | 0.465 |
+
+- Exact kl⁻¹ (implicit gradients) beats f_quad in 7 of 8 settings and ties the 8th: relaxations only distort the
+  gradient direction (García-Pérez et al. Sec. 4.1). **Decision (2026-11-19): drop f_quad / McAllester as training
+  objectives; keep them as baselines.**
+- The 0-1 target (eq. 9) wins for every bn_stat setting but loses for every plain-network setting (KL 6,500–8,000 vs
+  2,700–3,200 with the CE target). Default: eq. 8; use eq. 9 where it helps (BN statistics as parameters).
