@@ -6,7 +6,7 @@ good an architecture will be after training?
 
 This repo has a NumPy-only testbed (MLPs with manual backprop, sklearn `digits`
 dataset, no downloads), a set of loss-variance proxies with literature baselines,
-and three initial experiments. Status: **exploratory**. v2 adds full-grid runs, accuracy (0-1 loss) variance, and Fashion-MNIST ([below](#v2-full-grids-accuracy-0-1-loss-variance-harder-data)).
+and three initial experiments. Status: **exploratory**. Detailed, paper-oriented documentation lives in [`docs/`](docs/): [theory](docs/theory.md), [literature](docs/literature.md), [experiments](docs/experiments.md), [research log](docs/research_log.md), [paper outline](docs/paper_outline.md). v2 adds full-grid runs, accuracy (0-1 loss) variance, and Fashion-MNIST ([below](#v2-full-grids-accuracy-0-1-loss-variance-harder-data)).
 
 ## Why this might work: a PAC-Bayes motivation
 

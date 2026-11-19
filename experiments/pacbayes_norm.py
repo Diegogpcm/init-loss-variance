@@ -25,8 +25,12 @@ sampling from Q_t itself: every reported certificate is rigorous for the classif
   mode plain: train with t = 0; report the certificate at t = 0 and after post-hoc LBFGS over t
   mode inv:   t is trained jointly with (mu, sigma); only the KL depends on it
 
-Certificate: PAC-Bayes-kl (Maurer) with delta = 0.025, plus the Langford-Caruana correction for estimating the Gibbs
-empirical risk with M posterior samples (delta' = 0.01).
+Certificate: PAC-Bayes-kl (Maurer) with delta = 0.025. The Gibbs empirical risk is estimated with the BLOCK estimator
+(gibbs_block): S is split into blocks of b examples (b divides n) and every block gets its own fresh posterior sample.
+Block error rates are independent [0,1] variables given S whose means average exactly to the Gibbs risk, so the
+kl-Chernoff bound (Hoeffding 1963, independent non-identical variables) gives kl(est || Gibbs) <= ln(2/delta')/N
+with N = passes * n / b, i.e. tens of thousands of terms for the compute of ~20 full evaluations
+(the usual estimator, one sample per full pass, has N = number of samples; delta' = 0.01).
 
 Needs PyTorch.  Usage:
   python experiments/pacbayes_norm.py --data fashion_norm.npz --out results/v2/pacbayes_norm.jsonl
@@ -168,6 +172,20 @@ def batched_err(th, X, y, norm, depth, R, bs=8192):
     return wrong / len(X)
 
 
+def gibbs_block(sample_fn, err_fn, n, b, passes, gen):
+    """Block estimator of the Gibbs error E_theta (1/n) sum_i loss(theta, z_i).
+    sample_fn() -> fresh posterior sample; err_fn(theta, idx) -> error rate of theta on examples idx.
+    Returns (estimate, N independent terms)."""
+    import torch
+    assert n % b == 0, f"block size {b} must divide n = {n} so that the blocks partition S"
+    errs = []
+    for _ in range(passes):
+        perm = torch.randperm(n, generator=gen)
+        for j in range(n // b):
+            errs.append(err_fn(sample_fn(), perm[j * b:(j + 1) * b]))
+    return float(np.mean(errs)), len(errs)
+
+
 def bn_stats(th, X, depth, bs=8192):
     """Per-unit pre-BN mean and std of the given (deterministic) network on X, layer by layer."""
     import torch
@@ -281,14 +299,14 @@ def run_pb(cfg):
         with torch.no_grad():
             mu_e, sq_e = effective(mu_d, sq, log_scales(norm, depth, tt))
             kl = float(kl_gauss(mu_e, sq_e, m0, s0, sd))
-            tr, te = [], []
-            for _ in range(M):
-                th = sample(mu_e, sq_e)
-                tr.append(batched_err(th, Xtr, ytr, norm, depth, R))
-                te.append(batched_err(th, Xte, yte, norm, depth, R))
-            emp = float(np.mean(tr))
-            emp_ub = kl_inv(emp, math.log(2 / delta_mc) / M)
-            return dict(KL=kl, KL_per_n=kl / n, train01=emp, train01_ub=emp_ub, test01=float(np.mean(te)),
+            b = cfg["block_ref"] if norm == "bn_ref" else cfg["block"]
+            smp = lambda: sample(mu_e, sq_e)
+            err_tr = lambda th, idx: float((forward(th, Xtr[idx], norm, depth, R).argmax(1) != ytr[idx]).double().mean())
+            err_te = lambda th, idx: float((forward(th, Xte[idx], norm, depth, R).argmax(1) != yte[idx]).double().mean())
+            emp, N = gibbs_block(smp, err_tr, n, b, cfg["passes"], gen)
+            te, _ = gibbs_block(smp, err_te, len(Xte), b, max(1, cfg["passes"] // 4), gen)
+            emp_ub = kl_inv(emp, math.log(2 / delta_mc) / N)
+            return dict(KL=kl, KL_per_n=kl / n, train01=emp, train01_ub=emp_ub, N_mc=N, block=b, test01=te,
                         cert01=kl_inv(emp_ub, (kl + conf) / n))
 
     res = dict(kind="pacbayes", norm=norm, mode=mode, depth=depth, width=width, s0=s0, seed=cfg["seed"], n=n,
@@ -321,7 +339,10 @@ def main():
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--lr", type=float, default=5e-3)
-    ap.add_argument("--M", type=int, default=150, help="posterior samples for the Gibbs empirical risk")
+    ap.add_argument("--M", type=int, default=150, help="(unused by the block estimator; kept for compatibility)")
+    ap.add_argument("--block", type=int, default=40, help="block size of the Gibbs-risk estimator (must divide n)")
+    ap.add_argument("--block-ref", type=int, default=250, help="block size for bn_ref (each sample needs R)")
+    ap.add_argument("--passes", type=int, default=20)
     ap.add_argument("--widths", default="64,128")
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--s0s", default="0.02,0.05")
@@ -331,7 +352,8 @@ def main():
     ap.add_argument("--norms", default="none,ln,bn_ref,bn_param")
     a = ap.parse_args()
     L = lambda x, f: [f(v) for v in x.split(",")]
-    common = dict(data=a.data, depth=a.depth, epochs=a.epochs, lr=a.lr, M=a.M, threads=a.threads)
+    common = dict(data=a.data, depth=a.depth, epochs=a.epochs, lr=a.lr, M=a.M, threads=a.threads, block=a.block,
+                  block_ref=a.block_ref, passes=a.passes)
     if a.deterministic:
         fn = run_det
         cfgs = [dict(common, norm=nm, width=w, seed=s) for nm in ("none", "ln", "bn", "bn_ref")
