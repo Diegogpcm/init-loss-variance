@@ -16,7 +16,7 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-normdet | Ordinary training: none / LN / BN | `pacbayes_norm.py --deterministic` | `results/v2/norm_deterministic.jsonl` | final |
 | E-r1 | Pull-to-init sweep, hybrid fine-tuning, 3 seeds; variational seeds | `pacbayes_sgd.py --grid custom --finetune`, `pacbayes_norm.py --seeds`, `summarize_seeds.py` | `results/v2/sgd_r1_wdsweep.jsonl`, `sgd_r1_summary.md`, `pacbayes_norm_seeds.jsonl`, `norm_seeds_summary.md` | final |
 | E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl`, `r2a_summary.md`, `r2b_summary.md` | final |
-| E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | running |
+| E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | partial: hybrid and width-64 variational final; width-128 variational were still running on kipchoge at 19:16 |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -208,3 +208,40 @@ surrogate objective, not the posterior family, limited variational training.
   certificate (0.41–0.45); lr 0.2 with batch 32 diverges in 7 of 12 bn_stat runs (the hybrid still rescues the
   0.90-error solutions to ≈0.40). The round-0 correlation "higher lr/B → better certificate" (wd 1e-3, σ₀ = 0.1
   selected) does not carry over to the strong-pull regime.
+
+## E-r3: exact kl⁻¹ objective vs the García-Pérez accuracy objective (3 seeds)
+
+`klinv`: exact kl⁻¹ of the bound on the bounded CE (implicit-function gradients). `klinv01`: García-Pérez et al.
+(2025, eq. 9), kl⁻¹ at the rolling 0-1 risk with gradient m·∇L_xe (straight-through). Status at 19:16, 2026-11-19:
+hybrid complete; variational complete for width 64 only (width 128 were still running in tmux `lv_r3` on kipchoge;
+outputs `results/v2/r3_var_klinv{,01}.jsonl` there).
+
+**Variational, inv mode, width 64:**
+
+| variant | σ₀ | McAllester | f_quad | klinv (CE) | **klinv01 (accuracy)** | klinv01 Gibbs test / KL |
+|---|---|---|---|---|---|---|
+| bn_stat | 0.02 | 0.397 | 0.383 | 0.372 ± 0.007 | **0.358 ± 0.001** | 0.198 / 2,969 |
+| bn_stat | 0.05 | 0.395 | 0.379 | 0.364 ± 0.009 | **0.348 ± 0.001** | 0.191 / 3,002 |
+| none | 0.02 | 0.472 | 0.470 | 0.446 ± 0.008 | 0.462 ± 0.004 | 0.218 / 6,549 |
+| none | 0.05 | 0.417 | 0.404 | 0.394 ± 0.017 | 0.398 ± 0.009 | 0.203 / 4,418 |
+
+**Hybrid (SGD lr 0.05, batch 128, pull 3e-2, then 10 epochs of klinv01):**
+
+| norm | width | SGD posterior | translated prior (isotropic) | **hybrid klinv01** | Gibbs test / KL |
+|---|---|---|---|---|---|
+| bn_stat | 64 | 0.376 | 0.375 | **0.347 ± 0.001** | 0.192 / 2,930 |
+| bn_stat | 128 | 0.406 | 0.405 | 0.364 ± 0.002 | 0.193 / 3,427 |
+| none | 64 | 0.356 | 0.354 | **0.348 ± 0.002** | 0.191 / 3,017 |
+| none | 128 | 0.384 | 0.379 | 0.373 ± 0.004 | 0.196 / 3,703 |
+
+Findings:
+- **New best certificates: 0.347 ± 0.001** (bn_stat hybrid) and **0.348 ± 0.001** (bn_stat variational alone,
+  σ₀ = 0.05; and plain-network hybrid). Previous best: 0.354 (translated prior).
+- **Objective ladder for variational bn_stat (width 64, σ₀ = 0.05): McAllester 0.395 → f_quad 0.379 → exact kl⁻¹ on CE
+  0.364 → accuracy objective 0.348.** Each step aligns the training objective more closely with the 0-1 certificate.
+  The accuracy objective moves to the low-error / high-KL regime (Gibbs test 0.19, KL ≈ 3,000), the regime where the
+  SGD posteriors certified well.
+- **With the accuracy objective, BN statistics as parameters is needed**: plain networks do not benefit (0.398 vs
+  0.394; KL up to 6,500, larger seed variance), while bn_stat gains 0.016 over the exact kl⁻¹ and has tiny seed variance.
+- With the accuracy objective, pure variational bn_stat matches the SGD hybrid (0.348 vs 0.347): the SGD warm start is
+  no longer needed for BN networks.

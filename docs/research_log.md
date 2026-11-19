@@ -71,10 +71,23 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
 20. **Round 2 result:** f_quad beats McAllester by 0.011–0.016 everywhere (variational bn_stat 0.379); hybrid with f_quad
     gives bn_stat 0.365 (better than its SGD posterior and pure variational); best overall still the translated prior
     for plain networks (0.354). Higher SGD temperature hurts once the pull is strong.
-21. **Documentation for a paper (author's request):** `docs/` created (theory, literature, experiments, this log,
+21. **Round 3 (partial, 19:16):** the author's accuracy objective (klinv01) gives the best certificates: 0.347 ± 0.001
+    (bn_stat hybrid) and 0.348 ± 0.001 (bn_stat variational alone). Objective ladder for variational bn_stat: 0.395
+    (McAllester) → 0.379 (f_quad) → 0.364 (exact kl⁻¹, CE) → 0.348 (accuracy objective). Plain networks do not benefit
+    from klinv01. Session closed by the author before the width-128 variational runs finished.
+22. **Documentation for a paper (author's request):** `docs/` created (theory, literature, experiments, this log,
     paper outline).
 
 ## Decisions and preferences
 - Init-variance-as-NAS-proxy: deprioritized (2026-11-19).
 - BN in PAC-Bayes: statistics as parameters preferred over reference sets (no held-out data).
 - Data-dependent priors via sample splitting: avoided (author's paper excludes them; Picard-Weibel critique).
+
+## Next steps (as of end of 2026-11-19)
+1. Collect the width-128 round-3 variational results from kipchoge (`results/v2/r3_var_klinv{,01}.jsonl`;
+   `python experiments/summarize_seeds.py norm <files>`) and add them to experiments.md E-r3.
+2. Accuracy objective for LN and reference-set BN, and with σ₀ ∈ {0.1}; longer training.
+3. Why do plain networks not benefit from klinv01 while bn_stat does? (KL blows up to 6,500; check the m ratio and
+   the rolling average.)
+4. Move to standard benchmarks (MNIST, CIFAR-10 CNNs with BN), GPU, with the author's code as baseline.
+5. Literature checks listed in paper_outline.md (BN in PAC-Bayes, block estimator novelty).

@@ -9,6 +9,11 @@ not concentration (theory.md §12). Ingredients of practical deep learning, name
 SGD's noise geometry, can be built into the prior/posterior pair rigorously and reduce that term, without
 data-dependent priors (which Picard-Weibel et al. criticise as disguised test bounds).
 
+**Headline numbers (Fashion-MNIST, n = 55k, depth-2 MLPs, data-free prior, 3 seeds; 2026-11-19):** best certificate
+0.347 ± 0.001 (BN statistics as parameters + invariance-aware KL + García-Pérez accuracy objective; hybrid with SGD warm
+start), 0.348 ± 0.001 without SGD. Same family with the McAllester surrogate: 0.395. Plain network, same pipeline: 0.348
+(hybrid) / 0.398 (variational).
+
 **Contributions (status).**
 1. *BatchNorm under the i.i.d. assumption*: inference statistics as posterior parameters with a data-free prior,
    two-phase training; exact scale invariance of (W_j, m_j, s_j) (theory.md §9). Status: implemented; lowest KL in
