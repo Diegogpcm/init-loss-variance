@@ -57,6 +57,17 @@ def kl_inv(p, c):
 
 
 # ------------------------------------------------------------------ parameters
+def pb_objective(emp, kl, conf, n, kind):
+    """Training surrogate of the PAC-Bayes-kl bound. emp: bounded empirical loss (tensor), kl: KL (tensor).
+    mcallester: emp + sqrt((KL + conf) / 2n)            (Pinsker; loose at low error)
+    quad:       (sqrt(emp + c/2) + sqrt(c/2))^2, c = (KL + conf) / n   (refined Pinsker, Perez-Ortiz et al. f_quad)"""
+    import torch
+    if kind == "quad":
+        c = (kl + conf) / n
+        return (torch.sqrt(emp + c / 2) + torch.sqrt(c / 2)) ** 2
+    return emp + torch.sqrt((kl + conf) / (2 * n))
+
+
 def init_params(norm, depth, width, d_in, C, gen):
     import torch
     m0, sd = {}, {}
@@ -284,7 +295,7 @@ def run_pb(cfg):
             p = torch.softmax(out, 1).gather(1, ytr[idx, None]).squeeze(1)
             bce = (-torch.log(p.clamp_min(pmin)) / math.log(1 / pmin)).mean()
             kl = kl_gauss(mu_e, sq_e, m0, s0, sd)
-            obj = bce + torch.sqrt((kl + conf) / (2 * n))
+            obj = pb_objective(bce, kl, conf, n, cfg.get("objective", "mcallester"))
             opt.zero_grad(); obj.backward(); opt.step()
 
     with torch.no_grad():
@@ -310,6 +321,7 @@ def run_pb(cfg):
                         cert01=kl_inv(emp_ub, (kl + conf) / n))
 
     res = dict(kind="pacbayes", norm=norm, mode=mode, depth=depth, width=width, s0=s0, seed=cfg["seed"], n=n,
+               objective=cfg.get("objective", "mcallester"),
                n_params=int(sum(v.numel() for v in m0.values())))
     res["trained"] = evaluate(t_trained)
     if t:  # post-hoc: minimize the KL over the invariance group (mu, sigma fixed)
@@ -351,10 +363,11 @@ def main():
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--norms", default="none,ln,bn_ref,bn_param")
     ap.add_argument("--modes", default="plain,inv")
+    ap.add_argument("--objective", default="mcallester", choices=["mcallester", "quad"])
     a = ap.parse_args()
     L = lambda x, f: [f(v) for v in x.split(",")]
     common = dict(data=a.data, depth=a.depth, epochs=a.epochs, lr=a.lr, M=a.M, threads=a.threads, block=a.block,
-                  block_ref=a.block_ref, passes=a.passes)
+                  block_ref=a.block_ref, passes=a.passes, objective=a.objective)
     if a.deterministic:
         fn = run_det
         cfgs = [dict(common, norm=nm, width=w, seed=s) for nm in ("none", "ln", "bn", "bn_ref")

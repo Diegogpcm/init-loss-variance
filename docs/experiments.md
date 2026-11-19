@@ -14,6 +14,8 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-fkl | Parameter- vs function-space KL of PAC-Bayes posteriors | `function_space_kl.py`, `summarize_fkl.py` | `results/v2/function_space_kl.jsonl` | final (no MC correction; see note) |
 | E-norm | Normalization in PAC-Bayes; invariance-aware KL | `pacbayes_norm.py`, `summarize_norm.py` | `results/v2/pacbayes_norm.jsonl`, `norm_summary.md` (block estimator); `*_m150.jsonl` superseded | final |
 | E-normdet | Ordinary training: none / LN / BN | `pacbayes_norm.py --deterministic` | `results/v2/norm_deterministic.jsonl` | final |
+| E-r1 | Pull-to-init sweep, hybrid fine-tuning, 3 seeds; variational seeds | `pacbayes_sgd.py --grid custom --finetune`, `pacbayes_norm.py --seeds`, `summarize_seeds.py` | `results/v2/sgd_r1_wdsweep.jsonl`, `sgd_r1_summary.md`, `pacbayes_norm_seeds.jsonl`, `norm_seeds_summary.md` | final |
+| E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl` | running |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -149,3 +151,33 @@ Findings:
 - **BN enables high learning rates**: plain SGD diverges at lr 0.2 with batch 32 (test 0.90) and 128 (0.83) and at
   lr 0.05 with batch 32 (0.65); bn_stat trains (0.16, 0.12, 0.11).
 - Block estimator vs M = 150 on the same configuration (none, w64, wd 1e-2): 0.374 vs 0.497.
+
+## E-r1: pull-to-init sweep, hybrid, seeds (3 seeds; mean ± sd)
+
+SGD (lr 0.05, batch 128, 30 epochs) with L2 pull to m₀ ∈ {1e-2, 3e-2, 1e-1}; certificates for the SGD posterior, the
+isotropic posterior (prior translated to the SGD mean), and the hybrid (SGD warm start + 10 epochs of direct
+optimization of the McAllester-type surrogate). Full table: `results/v2/sgd_r1_summary.md`.
+
+| norm | width | pull | ‖θ̄−m₀‖ | SWA test | cert isotropic | cert hybrid | hybrid Gibbs test / KL |
+|---|---|---|---|---|---|---|---|
+| none | 64 | 1e-2 | 4.64 | 0.127 | 0.370 ± 0.001 | 0.389 ± 0.004 | 0.293 / 816 |
+| none | 64 | **3e-2** | 3.07 | 0.148 | **0.355 ± 0.002** | 0.387 ± 0.004 | 0.291 / 822 |
+| none | 64 | 1e-1 | 2.11 | 0.177 | 0.382 ± 0.002 | 0.388 ± 0.003 | 0.293 / 825 |
+| none | 128 | 3e-2 | 3.06 | 0.144 | 0.379 ± 0.002 | 0.410 ± 0.001 | 0.305 / 976 |
+| bn_stat | 64 | 3e-2 | 3.04 | 0.148 | 0.376 ± 0.001 | 0.385 ± 0.003 | 0.294 / 758 |
+| bn_stat | 128 | 3e-2 | 3.04 | 0.144 | 0.404 ± 0.003 | 0.395 ± 0.007 | 0.295 / 960 |
+| bn_stat | 128 | 1e-1 | 2.05 | 0.172 | 0.418 ± 0.002 | 0.392 ± 0.003 | 0.299 / 762 |
+
+Variational (inv mode, McAllester surrogate), 3 seeds: bn_stat 0.395–0.411 (sd ≤ 0.008); LN 0.399–0.453;
+none 0.417–0.491 (sd up to 0.023). `results/v2/norm_seeds_summary.md`.
+
+Findings:
+- **Best certificate: 0.355 ± 0.002** (no normalization, width 64, pull 3e-2, prior translated to the SGD mean).
+  Optimum pull ≈ 3e-2; at 1e-1 the SGD solution's error (0.177) dominates.
+- **Seed noise is small** (sd 0.001–0.007 for SGD posteriors), so differences ≥ 0.01 are meaningful.
+- **The hybrid converges to the variational regime** (Gibbs test ≈ 0.29–0.30, KL ≈ 760–1,000) from any warm start,
+  and is worse than the SGD posteriors except where those are weak. Diagnosis: the McAllester surrogate
+  (√((KL + c)/2n)) over-penalizes KL relative to the kl-inversion certificate in the low-error regime. → round 2 tests
+  the f_quad objective (refined Pinsker; Pérez-Ortiz et al.).
+- **bn_stat is the best and most stable variational method**; the translated-prior SGD posterior beats the best
+  variational posterior by ≈0.04.

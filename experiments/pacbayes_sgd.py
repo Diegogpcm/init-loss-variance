@@ -25,7 +25,7 @@ from multiprocessing import Pool
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pacbayes_norm import init_params, forward, bn_stats, kl_inv, load, gibbs_block, STAT_PRIOR_SD  # noqa: E402
+from pacbayes_norm import init_params, forward, bn_stats, kl_inv, load, gibbs_block, pb_objective, STAT_PRIOR_SD  # noqa: E402
 
 S0_GRID = [0.01, 0.02, 0.05, 0.1, 0.2]
 K_GRID = [0, 10, 40]
@@ -96,6 +96,7 @@ def run(cfg):
         return wrong / len(X)
 
     res = dict(norm=norm, depth=depth, width=width, lr=lr, batch=B, wd_init=wd, seed=cfg["seed"], n=n, n_params=P,
+               objective=cfg.get("objective", "mcallester"),
                T=len(snaps), test_err_last=err(theta.detach(), Xte, yte), test_err_swa=err(th_bar, Xte, yte),
                train_err_swa=err(th_bar, Xtr, ytr), dist_init=float((th_bar - m0).norm()))
 
@@ -189,7 +190,7 @@ def run(cfg):
                 p = torch.softmax(out, 1).gather(1, ytr[idx, None]).squeeze(1)
                 bce = (-torch.log(p.clamp_min(pmin)) / math.log(1 / pmin)).mean()
                 kl = 0.5 * (sz ** 2 + mu_z ** 2 - 1 - 2 * torch.log(sz)).sum()
-                obj = bce + torch.sqrt((kl + conf) / (2 * n))
+                obj = pb_objective(bce, kl, conf, n, cfg.get("objective", "mcallester"))
                 ft_opt.zero_grad(); obj.backward(); ft_opt.step()
         with torch.no_grad():
             mu_f, sz_f = mu_z.detach(), sp(rho_z).detach()
@@ -245,6 +246,7 @@ def main():
     ap.add_argument("--seeds", default="0")
     ap.add_argument("--finetune", type=int, default=0, help="epochs of direct bound optimization after SGD")
     ap.add_argument("--ft-lr", type=float, default=0.01, help="Adam lr in whitened (prior-sd) units")
+    ap.add_argument("--objective", default="mcallester", choices=["mcallester", "quad"])
     a = ap.parse_args()
     common = dict(data=a.data, depth=2, epochs=a.epochs, collect_epochs=a.collect_epochs, T=a.T, M=a.M,
                   M_sel=a.M_sel, sel_n=a.sel_n, threads=a.threads, seed=0, block=a.block, passes=a.passes)
@@ -257,7 +259,7 @@ def main():
             for B in (32, 128, 512):
                 if (lr, B) != (0.05, 128):
                     cfgs.append(dict(common, norm=norm, width=128, lr=lr, batch=B, wd_init=1e-3))
-    common.update(finetune=a.finetune, ft_lr=a.ft_lr)
+    common.update(finetune=a.finetune, ft_lr=a.ft_lr, objective=a.objective)
     if a.grid == "custom":
         L = lambda x, f: [f(v) for v in x.split(",")]
         cfgs = [dict(common, norm=nm, width=w, lr=lr, batch=B, wd_init=wd, seed=sd)
