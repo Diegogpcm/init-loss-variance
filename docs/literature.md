@@ -75,6 +75,13 @@ explain generalization. arXiv:2211.13609.** Data-independent prior over compress
 training + quantization + arithmetic coding). MNIST 11.6% bound with ~0.38 KB model; first non-vacuous data-free bounds
 on FashionMNIST / CIFAR-10 / CIFAR-100.
 
+**Haddouche & Guedj (2022). Online PAC-Bayes learning. NeurIPS. arXiv:2206.00024.** Thm 2.3: PAC-Bayes bound with a
+sequence of priors P_i that may depend on the past (z_<i) and posteriors Q_i that may depend on everything, charged
+Σ KL(Q_i‖P_i)/λ; certifies Σ E_{Q_i}[E(ℓ(h, z_i) | F_{i−1})] (no i.i.d. assumption needed). Corollaries: OPBTrain
+(Gibbs updates Q̂_{i+1} ∝ e^{−λℓ(·, z_i)}Q̂_i; analogy with online gradient descent, λ ↔ step size) and OPBTest (Q = P,
+KL-free; progressive validation). Disintegrated variants (Sec. 4). Small experiments on online regression/classification.
+Hoeffding-type slack λmK²/2.
+
 ## Theory used
 
 - Catoni (2007) monograph, *PAC-Bayesian supervised classification: the thermodynamics of statistical learning*:

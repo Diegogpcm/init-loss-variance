@@ -17,6 +17,7 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-r1 | Pull-to-init sweep, hybrid fine-tuning, 3 seeds; variational seeds | `pacbayes_sgd.py --grid custom --finetune`, `pacbayes_norm.py --seeds`, `summarize_seeds.py` | `results/v2/sgd_r1_wdsweep.jsonl`, `sgd_r1_summary.md`, `pacbayes_norm_seeds.jsonl`, `norm_seeds_summary.md` | final |
 | E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl`, `r2a_summary.md`, `r2b_summary.md` | final |
 | E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | final (`objectives_summary.md`) |
+| E-online | Trajectory certificates from one SGD pass: progressive validation and online PAC-Bayes (OPBTrain) | `online_bounds.py`, `summarize_online.py` | `results/v2/online_bounds.jsonl`, `online_summary.md` | final |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -264,3 +265,21 @@ Findings:
   objectives; keep them as baselines.**
 - The 0-1 target (eq. 9) wins for every bn_stat setting but loses for every plain-network setting (KL 6,500–8,000 vs
   2,700–3,200 with the CE target). Default: eq. 8; use eq. 9 where it helps (BN statistics as parameters).
+
+## E-online: trajectory-based certificates from one SGD pass (3 seeds)
+
+One pass over S (55k, fixed random order), SGD momentum 0.9, {none, LN} × width {64, 128} × lr {0.01, 0.05} × batch
+{32, 128}. (a) Progressive validation (= OPBTest of Haddouche & Guedj 2022): predictor "random iterate scoring an
+example in the last fraction f of the pass", f ∈ {1, 0.5, 0.25, 0.1} with union bound, Chernoff-kl for martingale
+differences, δ = 0.025. (b) OPBTrain with Gaussian noise σ ∈ {0.003 … 0.3} around the iterates (step energy
+b·Σ‖Δ_j‖²/2σ²), union bound over σ × λ (13 values). Theory: theory.md §13. Table: `results/v2/online_summary.md`.
+
+- **Progressive validation: 0.148–0.159** for all stable configurations (sd ≤ 0.005); measured test error of the
+  certified iterates 0.138–0.148 (gap ≈ 0.01). Best 0.148 (LN, width 128, lr 0.01, batch 32). 2.3× tighter than the best
+  data-free PAC-Bayes certificate (0.347), but it certifies a single-pass, random-iterate learner and is a test bound
+  in disguise (each example is scored before it is trained on). Unstable runs (none, lr 0.05, batch 32: one-pass test
+  0.32–0.59) are certified accordingly (0.28–0.37).
+- **OPBTrain: vacuous everywhere (≥ 0.87).** Best configuration: σ = 0.003 → 621 nats/example of step energy;
+  σ = 0.03 → 6.2 nats/example (noisy error 0.17); σ = 0.1 → 0.56 nats/example but noisy error 0.43; σ = 0.3 → error
+  0.87. SGD's steps (‖Δ‖ ≈ 0.1 with momentum) are large and poorly aligned, so the per-step KL dominates: **SGD's noise
+  makes the trajectory-KL route expensive, not cheap.**

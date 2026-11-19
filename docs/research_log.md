@@ -93,6 +93,15 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     free (no compensation in the next layer) and statistics parameters that absorb mean/scale shifts cheaply, so
     reducing the 0-1 error costs less KL; plain networks pay for the same functional change in full.
 
+24. **Author: f_quad obsolete? / exploit low loss along the SGD trajectory?** Agreed to drop f_quad/McAllester as
+    training objectives. Trajectory idea: a wider posterior along the path cannot help with a Gaussian prior (KL =
+    second moment − entropy; optimal width = σ₀, already used). Read Haddouche & Guedj (2022) in full: priors may
+    follow the past (online predictive sequence), posteriors arbitrary, per-step KL. E-online: progressive validation
+    certifies 0.148–0.159 (2.3× tighter than our best PAC-Bayes, but a disguised test bound for a one-pass learner);
+    OPBTrain with Gaussian noise around SGD iterates is vacuous (per-step energy). Author's question "does SGD noise
+    keep later passes valid?": not by itself; later passes are charged in full by the per-example KL; noise must be
+    part of the prior/posterior (DP / MI bounds) to make reuse cheap.
+
 ## Next steps (as of 2026-11-19 evening)
 1. Diagnose klinv01 on plain networks: track m, the 0-1/CE gap and KL during training; compare where the KL goes
    (per layer, mean vs variance terms) for none vs bn_stat under klinv01; try LayerNorm (per-example, has a free

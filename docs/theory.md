@@ -198,3 +198,31 @@ Conclusion: concentration (kl inversion) is nearly tight for the 0-1 loss; the s
 posterior family). Further limits: with the best data-distribution-dependent prior the expected KL is I(S;W);
 Livni & Moran (2020) show PAC-Bayes cannot certify some learnable classes (thresholds), a limitation of the KL term
 itself; conditional MI (Steinke & Zakynthinou 2020) avoids it.
+
+## 13. Trajectory-based certificates: online-to-batch and online PAC-Bayes [standard results; our reading]
+
+**Widening the posterior along the trajectory does not help with a Gaussian prior.** For any Q,
+KL(Q‖N(m₀, σ₀²I)) = E_Q‖θ − m₀‖²/2σ₀² − H(Q) + const. Widening costs tr Cov/2σ₀² (linear) and gains ½ ln det Cov
+(logarithmic); the optimal width in any direction is σ₀, which our best posteriors already use (τ = 1). The mean term
+(thousands of nats) lies entirely along Δ = μ − m₀; spreading along the path only helps by including points closer to
+m₀, which have higher loss (the trade-off the pull-to-init already tunes). A mixture over T trajectory points gains at
+most I(t; θ) ≤ ln T nats.
+
+**Progressive validation / online-to-batch** (Blum, Kalai & Langford 1999; Cesa-Bianchi, Conconi & Gentile 2004). With
+one pass over S in a fixed order, X_i = ℓ(θ_{before z_i}, z_i) has E[X_i | F_{i−1}] = risk of that iterate. For [0,1]
+martingale differences the Chernoff-kl bound holds for the average (the conditional log-MGF ln(1 − μ + μeᵗ) is concave
+in μ), so the "random iterate of a window W" predictor satisfies kl(X̄_W ‖ μ_W) ≤ ln(1/δ)/|W|. No prior, no KL. It is
+the sharpest form of Picard-Weibel's point (a test bound that recycles each example as training data after scoring it)
+and certifies a single-pass learner only.
+
+**Online PAC-Bayes** (Haddouche & Guedj 2022, Thm 2.3). Priors P_i may depend on z₁…z_{i−1} (an "online predictive
+sequence"); posteriors Q_i may depend on all of S; the certified quantity is Σᵢ E_{Q_i}[E(ℓ | F_{i−1})] with slack
+Σᵢ KL(Q_i‖P_i)/λ + λm/2 + ln(1/δ)/λ (Hoeffding-type). Consequences:
+- Q_i = P_i (OPBTest) recovers progressive validation.
+- Q̂_{i+1} = posterior after z_i, prior Q̂_i (OPBTrain): the KLs sum to a "step energy"; for Gaussians around SGD
+  iterates, b·Σ_j ‖θ_j − θ_{j−1}‖²/2σ² per pass.
+- **Multiple passes**: a constant multi-epoch posterior Q against first-pass priors pays KL(Q‖P_i) *per example*,
+  giving slack ≈ √(2·avg KL) instead of √(KL/2n): vacuous for any realistic KL. Later passes are not forbidden, but are
+  charged in full. SGD's minibatch noise does not help unless it is part of the prior/posterior (KL ∝ shift²/σ²): the
+  quantitative versions of "noise makes data reuse cheap" are differential privacy (Dziugaite & Roy 2018) and
+  information-theoretic trajectory bounds (Neu et al. 2021).
