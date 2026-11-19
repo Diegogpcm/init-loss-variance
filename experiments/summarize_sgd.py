@@ -1,8 +1,17 @@
 """Summarize results/v2/pacbayes_sgd.jsonl. Usage: python experiments/summarize_sgd.py [file]"""
 import json, sys
 
-path = sys.argv[1] if len(sys.argv) > 1 else "results/v2/pacbayes_sgd.jsonl"
-rows = [json.loads(l) for l in open(path)]
+# later files override earlier ones for the same configuration (e.g. the bn_stat rerun with its own stats width)
+paths = sys.argv[1:] or ["results/v2/pacbayes_sgd.jsonl", "results/v2/pacbayes_sgd_bnfix.jsonl"]
+cfgs = {}
+for path in paths:
+    try:
+        for l in open(path):
+            r = json.loads(l)
+            cfgs[(r["norm"], r["width"], r["lr"], r["batch"], r["wd_init"])] = r
+    except FileNotFoundError:
+        pass
+rows = list(cfgs.values())
 
 
 def f(x, p=4):
@@ -11,7 +20,8 @@ def f(x, p=4):
 
 def line(r):
     c, ci = r.get("cert") or {}, r.get("cert_iso") or {}
-    sub = (f"K={c['K']}, α={c['alpha']}, τ={c['tau']}, σ₀={c['s0']}" if c else "—")
+    sub = (f"K={c['K']}, α={c['alpha']}, τ={c['tau']}, σ₀={c['s0']}" + (f", τ_s={c['tau_s']}" if r["norm"] == "bn_stat"
+           and "tau_s" in c else "") if c else "—")
     kl = (f"{c['KL']:.0f} (mean {c['KL_mean']:.0f}, sub {c['KL_sub']:.0f}, compl. {c['KL_comp']:.0f})" if c else "—")
     return (f"| {r['norm']} | {r['width']} | {r['lr']} | {r['batch']} | {r['wd_init']} | {f(r['test_err_swa'])} | "
             f"{r['dist_init']:.1f} | {f(c.get('test01'))} | {f(c.get('train01'))} | {f(c.get('cert01'))} | "

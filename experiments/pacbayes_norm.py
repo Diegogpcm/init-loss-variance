@@ -350,6 +350,7 @@ def main():
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--norms", default="none,ln,bn_ref,bn_param")
+    ap.add_argument("--modes", default="plain,inv")
     a = ap.parse_args()
     L = lambda x, f: [f(v) for v in x.split(",")]
     common = dict(data=a.data, depth=a.depth, epochs=a.epochs, lr=a.lr, M=a.M, threads=a.threads, block=a.block,
@@ -361,7 +362,7 @@ def main():
     else:
         fn = run_pb
         cfgs = [dict(common, norm=nm, mode=md, width=w, s0=s0, seed=s)
-                for nm in L(a.norms, str) for md in ("plain", "inv")
+                for nm in L(a.norms, str) for md in L(a.modes, str)
                 if not (nm == "bn_param" and md == "inv")
                 for w in L(a.widths, int) for s0 in L(a.s0s, float) for s in L(a.seeds, int)]
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)

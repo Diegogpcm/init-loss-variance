@@ -12,7 +12,7 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-v2-tail | Is the lower tail determined by the variance? | `tail_vs_variance.py` | printed | final |
 | T-moment | Worst-case Catoni bound given prior mean/variance | `moment_worst_case.py` | printed (theory.md §4) | final |
 | E-fkl | Parameter- vs function-space KL of PAC-Bayes posteriors | `function_space_kl.py`, `summarize_fkl.py` | `results/v2/function_space_kl.jsonl` | final (no MC correction; see note) |
-| E-norm | Normalization in PAC-Bayes; invariance-aware KL | `pacbayes_norm.py`, `summarize_norm.py` | `results/v2/pacbayes_norm.jsonl` (block estimator); `*_m150.jsonl` superseded | rerun in progress |
+| E-norm | Normalization in PAC-Bayes; invariance-aware KL | `pacbayes_norm.py`, `summarize_norm.py` | `results/v2/pacbayes_norm.jsonl`, `norm_summary.md` (block estimator); `*_m150.jsonl` superseded | final |
 | E-normdet | Ordinary training: none / LN / BN | `pacbayes_norm.py --deterministic` | `results/v2/norm_deterministic.jsonl` | final |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
@@ -85,7 +85,24 @@ Relative comparisons held: inv training cut KL by 30–65% for every variant; po
 bn_stat + inv gave the lowest KL in every setting (775–1,112 nats) and the best certificate at σ₀ = 0.02;
 naive bn_param was the worst BN variant (statistics cost 360–780 nats).
 
-**Block-estimator results:** *to be filled when the rerun finishes.*
+**Block-estimator results (final; `results/v2/norm_summary.md`).** Certificate (KL in nats), plain → inv:
+
+| σ₀ | width | none | LayerNorm | BN, reference set | BN stats naive | **BN stats as params** |
+|---|---|---|---|---|---|---|
+| 0.02 | 64 | 0.507 → 0.445 (2294 → 1540) | 0.511 → 0.448 (2079 → 1097) | 0.499 → 0.451 (2238 → 1038) | 0.499 (2611) | 0.477 → **0.407** (1761 → 775) |
+| 0.02 | 128 | 0.498 → 0.489 (2835 → 1922) | 0.505 → 0.438 (2729 → 1242) | 0.525 → 0.449 (3227 → 1136) | 0.507 (4162) | 0.476 → **0.394** (2378 → 949) |
+| 0.05 | 64 | 0.429 → 0.399 (1753 → 1162) | 0.448 → **0.397** (1528 → 1018) | 0.438 → 0.405 (1663 → 1060) | 0.465 (2335) | 0.420 → **0.395** (1402 → 803) |
+| 0.05 | 128 | 0.521 → 0.446 (3192 → 2024) | 0.482 → **0.414** (2257 → 1153) | 0.465 → 0.418 (2580 → 1169) | 0.497 (3513) | 0.455 → **0.414** (2386 → 1112) |
+
+- The block estimator lowers every certificate by ≈0.10–0.12 relative to M = 150 (same posteriors).
+- BN statistics as parameters + invariance-aware training: best certificate in 3 of 4 settings, tied in the 4th
+  (0.394–0.414); lowest KL everywhere. Naive statistics-as-parameters is the worst BN variant.
+- Invariance-aware training lowers the certificate by 0.01–0.08 for every variant; post-hoc rescaling changes it by
+  <0.001.
+- Differences among the best variants at σ₀ = 0.05 are ≈0.01–0.02; single seed, so not yet significant.
+- Compare E-sgd: SGD with L2 pull to init + prior translated to the SGD mean reaches 0.374 (none, width 64) with a much
+  larger KL (≈4,400) but much lower Gibbs error (0.18 vs 0.29–0.31): direct bound optimization with Adam finds a
+  worse error/KL trade-off.
 
 ## E-sgd: SGD-noise subspace posterior
 
@@ -117,8 +134,16 @@ Findings:
   SGD average*. The Lyapunov-subspace hypothesis (theory.md §11) is not supported here.
 - **The L2 pull to m₀ is the lever**: wd_init 1e-2 keeps the solution 4.7 from m₀ (13–40 otherwise) and halves the
   certificate relative to no pull. Larger pulls not yet tried.
-- **bn_stat is hurt by a design flaw**: in whitened coordinates the BN statistics get the same relative width τ, i.e.
-  noise of e^{±0.5} on every unit's scale at τ = 1 (prior sd 0.5). They need their own width parameter.
+- **bn_stat was hurt by a design flaw** (fixed): in whitened coordinates the BN statistics got the same relative width
+  τ, i.e. noise of e^{±0.5} on every unit's scale at τ = 1. **Fix** (`pacbayes_sgd_bnfix.jsonl`): the statistics form an
+  independent block N(z̄_s, τ_s² I) with their own grid τ_s ∈ {0.02, 0.1, 0.3, 1}. Result at wd_init 1e-2: width 64
+  0.502 → **0.386**, width 128 0.516 → **0.413** (no normalization: 0.374 / 0.400); τ_s ≈ 0.1 is selected; Gibbs test
+  error 0.31 → 0.19–0.20.
+- **SGD temperature and certifiability (bn_stat, width 128, wd_init 1e-3, 9 runs):** Spearman(lr/B, cert) = −0.90:
+  certificates improve from 0.70–0.73 at lr/B ≈ 1e-4 to 0.52 at lr/B ≈ 1.6e-3, with larger σ₀ (0.1) and τ = 1 selected.
+  But Spearman(lr/B, SWA test error) = +0.48 and Spearman(cert, SWA test) = −0.50: the certificate tracks the noise
+  level of SGD (robustness to prior-sized perturbations), not test error. Plain networks: no relation (ρ = −0.03;
+  high temperatures diverge). Single seed.
 - **lr × batch** (width 128, wd 1e-3): SWA test ≈ 0.10 for all stable runs; certificates 0.58–0.80 without a clear
   relation to test error (posterior selection noise dominates). No support for D.4 yet.
 - **BN enables high learning rates**: plain SGD diverges at lr 0.2 with batch 32 (test 0.90) and 128 (0.83) and at

@@ -50,7 +50,14 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     the SGD average (τ = 1); the L2 pull to init is what matters (best certificate 0.374 vs 0.497 with M = 150).
     bn_stat suffered from sharing τ with the BN statistics (design flaw, to fix). I had wrongly reported the first
     SGD run as "stuck at 28 of 30": the grid has 28 configurations; both runs had completed.
-14. **Documentation for a paper (author's request):** `docs/` created (theory, literature, experiments, this log,
+14. **Normalization rerun (block estimator):** certificates ≈0.10–0.12 lower than with M = 150; bn_stat + inv best in
+    3 of 4 settings (0.394–0.414).
+15. **bn_stat fix in the SGD posterior** (own statistics width): 0.502 → 0.386 (width 64). New observation: with BN,
+    certificates improve strongly with SGD temperature lr/B (ρ = −0.90) while SWA test error worsens slightly.
+16. **Autonomous iteration (author away ~1 h, 2026-11-19 ~18:20):** round 1 = pull-to-init sweep {1e-2, 3e-2, 1e-1} ×
+    {none, bn_stat} × width {64, 128} × 3 seeds with a new hybrid stage (SGD warm start + 10 epochs of direct bound
+    optimization); variational seeds 1, 2 for inv-mode leaders.
+17. **Documentation for a paper (author's request):** `docs/` created (theory, literature, experiments, this log,
     paper outline).
 
 ## Decisions and preferences
