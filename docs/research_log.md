@@ -88,11 +88,15 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     obsolete. Agreed for training objectives (exact kl⁻¹ ≥ f_quad in 8/8 settings, 7 strictly), with two caveats: the
     0-1 target (eq. 9) helps only for BN-statistics models and hurts plain networks (KL explodes); "optimal" holds for
     the function being optimized, not for the stochastic, non-convex optimization or for bounds outside PAC-Bayes-kl.
-    Hypothesis for the plain-network failure: without the invariance-aware rescalings, reducing 0-1 error needs large,
-    fully charged weight moves.
+    First hypothesis ("plain networks lack the invariance-aware rescalings") was wrong: the plain-network runs were
+    already in inv mode (ReLU per-unit rescaling). Refined hypothesis: BN-statistics models have rescalings that are
+    free (no compensation in the next layer) and statistics parameters that absorb mean/scale shifts cheaply, so
+    reducing the 0-1 error costs less KL; plain networks pay for the same functional change in full.
 
 ## Next steps (as of 2026-11-19 evening)
-1. Diagnose klinv01 on plain networks: track m and KL during training; plain network + invariance-aware KL + klinv01.
+1. Diagnose klinv01 on plain networks: track m, the 0-1/CE gap and KL during training; compare where the KL goes
+   (per layer, mean vs variance terms) for none vs bn_stat under klinv01; try LayerNorm (per-example, has a free
+   per-layer rescaling) with klinv01 to separate "normalization" from "statistics parameters".
 2. Accuracy objective for LN and reference-set BN, and with σ₀ ∈ {0.1}; longer training.
 3. Why do plain networks not benefit from klinv01 while bn_stat does? (KL blows up to 6,500; check the m ratio and
    the rolling average.)
