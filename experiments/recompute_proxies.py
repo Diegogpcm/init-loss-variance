@@ -7,17 +7,18 @@ from multiprocessing import Pool
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lvproxy import Arch, all_proxies  # noqa: E402
-from lvproxy.data import digits  # noqa: E402
+from lvproxy.data import load as load_data  # noqa: E402
 
 ARGS = {}
 
 
 def job(row):
-    Xtr, ytr, _, _, C = digits()
+    Xtr, ytr, _, _, C = load_data(row.get("dataset", "digits"))
     if ARGS["n_train"] != "full":
         Xtr, ytr = Xtr[: int(ARGS["n_train"])], ytr[: int(ARGS["n_train"])]
     p = ARGS["probe"]
     row["proxies"] = all_proxies(Arch(**row["arch"]), Xtr[:p], ytr[:p], C, K=ARGS["K"])
+    row["K"] = ARGS["K"]
     return row
 
 
@@ -27,10 +28,11 @@ if __name__ == "__main__":
     ap.add_argument("--n-train", default="full")
     ap.add_argument("--K", type=int, default=32)
     ap.add_argument("--probe", type=int, default=256)
+    ap.add_argument("--workers", type=int, default=os.cpu_count())
     a = ap.parse_args()
     ARGS.update(n_train=a.n_train, K=a.K, probe=a.probe)
     rows = [json.loads(l) for l in open(a.file)]
-    with Pool(os.cpu_count()) as pool:
+    with Pool(a.workers) as pool:
         rows = pool.map(job, rows)
     with open(a.file, "w") as f:
         for r in rows:

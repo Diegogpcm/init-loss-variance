@@ -25,12 +25,16 @@ if __name__ == "__main__":
     ap.add_argument("--n-train", default="full")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--seeds", type=int, default=3)
+    ap.add_argument("--K", type=int, default=32)
+    ap.add_argument("--probe", type=int, default=256)
+    ap.add_argument("--dataset", default="digits")
+    ap.add_argument("--workers", type=int, default=os.cpu_count())
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     archs = [Arch(a.depth, a.width, act, res, g) for act in ACTIVATIONS for res in (False, True) for g in GAINS]
-    jobs = [(ar, a.n_train, a.seeds, a.epochs, 32, 256) for ar in archs]
-    with open(a.out, "w") as f, Pool(os.cpu_count()) as pool:
-        for r in pool.imap_unordered(job, jobs):
+    jobs = [(ar, a.n_train, a.seeds, a.epochs, a.K, a.probe, a.dataset) for ar in archs]
+    with open(a.out, "w") as f, Pool(a.workers) as pool:
+        for r in pool.imap_unordered(job, jobs, chunksize=1):
             f.write(json.dumps(r) + "\n")
             f.flush()
     print("done", len(jobs))

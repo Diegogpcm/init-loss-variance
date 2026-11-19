@@ -4,6 +4,7 @@ For each sampled architecture: compute init-time proxies (K inits on a fixed pro
 then train with S seeds and record train/test accuracy and loss.
 
 Usage: python experiments/run_sweep.py --n-archs 150 --n-train full --out results/sweep_full.jsonl
+       python experiments/run_sweep.py --n-archs 0 --K 128 --out results/grid_full.jsonl   # full 1200-arch grid
 """
 import argparse, json, os, sys, time
 from multiprocessing import Pool
@@ -12,7 +13,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lvproxy import Arch, ACTIVATIONS, train, all_proxies  # noqa: E402
-from lvproxy.data import digits  # noqa: E402
+from lvproxy.data import load as load_data  # noqa: E402
 
 DEPTHS = [1, 2, 4, 8, 12]
 WIDTHS = [16, 32, 64, 128]
@@ -31,9 +32,14 @@ def sample_archs(n, seed):
     return archs
 
 
+def full_grid():
+    return [Arch(d, w, act, res, g) for d in DEPTHS for w in WIDTHS for act in ACTIVATIONS
+            for res in (False, True) for g in GAINS]
+
+
 def job(args):
-    arch, n_train, n_seeds, epochs, K, probe = args
-    Xtr, ytr, Xte, yte, C = digits()
+    arch, n_train, n_seeds, epochs, K, probe, dataset = args
+    Xtr, ytr, Xte, yte, C = load_data(dataset)
     if n_train != "full":
         Xtr, ytr = Xtr[: int(n_train)], ytr[: int(n_train)]
     t0 = time.time()
@@ -42,13 +48,14 @@ def job(args):
     res = {k: float(np.mean([r[k] for r in runs])) for k in ("train_loss", "train_acc", "test_loss", "test_acc")}
     res["test_acc_std"] = float(np.std([r["test_acc"] for r in runs]))
     res["n_diverged"] = int(sum(r["diverged"] for r in runs))
-    return {"arch": arch.as_dict(), "name": arch.name(), "proxies": prox, "trained": res,
+    return {"arch": arch.as_dict(), "name": arch.name(), "dataset": dataset, "n_train": n_train, "K": K, "proxies": prox, "trained": res,
             "seconds": time.time() - t0}
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n-archs", type=int, default=150)
+    ap.add_argument("--n-archs", type=int, default=150, help="0 = full grid (1200 archs)")
+    ap.add_argument("--dataset", default="digits", choices=["digits", "fashion"])
     ap.add_argument("--n-train", default="full")
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--epochs", type=int, default=40)
@@ -58,11 +65,12 @@ def main():
     ap.add_argument("--arch-seed", type=int, default=0)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    archs = sample_archs(a.n_archs, a.arch_seed)
-    jobs = [(ar, a.n_train, a.seeds, a.epochs, a.K, a.probe) for ar in archs]
-    os.makedirs(os.path.dirname(a.out), exist_ok=True)
+    archs = full_grid() if a.n_archs == 0 else sample_archs(a.n_archs, a.arch_seed)
+    jobs = [(ar, a.n_train, a.seeds, a.epochs, a.K, a.probe, a.dataset) for ar in archs]
+    load_data(a.dataset)  # download/cache once before forking
+    os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as f, Pool(a.workers) as pool:
-        for i, r in enumerate(pool.imap_unordered(job, jobs)):
+        for i, r in enumerate(pool.imap_unordered(job, jobs, chunksize=1)):
             f.write(json.dumps(r) + "\n")
             f.flush()
             if i % 10 == 0:
