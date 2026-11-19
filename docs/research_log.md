@@ -57,7 +57,21 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
 16. **Autonomous iteration (author away ~1 h, 2026-11-19 ~18:20):** round 1 = pull-to-init sweep {1e-2, 3e-2, 1e-1} ×
     {none, bn_stat} × width {64, 128} × 3 seeds with a new hybrid stage (SGD warm start + 10 epochs of direct bound
     optimization); variational seeds 1, 2 for inv-mode leaders.
-17. **Documentation for a paper (author's request):** `docs/` created (theory, literature, experiments, this log,
+17. **Round 1 result:** best certificate 0.355 ± 0.002 (prior translated to SGD mean, pull 3e-2, width 64); the hybrid
+    collapses to the variational regime → hypothesis: the McAllester surrogate over-penalizes KL relative to the
+    kl-inversion certificate. Round 2 tests f_quad; round 3 prepared: exact kl-inverse objective (implicit-function
+    gradients, checked against finite differences).
+18. **Round 2b crash:** a high-temperature bn_stat run diverged to NaN and the SVD exception killed the pool. Fixed:
+    divergence is recorded as a result; each configuration runs in a try/except wrapper. Relaunched 18:39.
+19. **Author's question (18:50): training on a CE bound to certify accuracy?** Yes: all objectives so far used the
+    bounded CE as the empirical-risk surrogate. Implemented the author's method (García-Pérez et al. 2025, Sec. 4.1,
+    eq. 9) as objective `klinv01`: kl⁻¹ evaluated at the rolling 0-1 risk, gradient m·∇L_xe with
+    m = rolling L_01 / rolling L_xe (straight-through). 2-epoch smoke test: f_quad 0.440, exact kl⁻¹ on CE 0.435,
+    klinv01 0.429 (higher KL, lower 0-1 error). Round 3 queued to compare at scale.
+20. **Round 2 result:** f_quad beats McAllester by 0.011–0.016 everywhere (variational bn_stat 0.379); hybrid with f_quad
+    gives bn_stat 0.365 (better than its SGD posterior and pure variational); best overall still the translated prior
+    for plain networks (0.354). Higher SGD temperature hurts once the pull is strong.
+21. **Documentation for a paper (author's request):** `docs/` created (theory, literature, experiments, this log,
     paper outline).
 
 ## Decisions and preferences

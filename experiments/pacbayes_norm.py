@@ -57,14 +57,57 @@ def kl_inv(p, c):
 
 
 # ------------------------------------------------------------------ parameters
+def _klinv_fn():
+    """Differentiable q = kl^{-1}(p, c) = sup{q >= p : kl(p||q) <= c} (bisection forward, implicit-function backward)."""
+    import torch
+
+    class KLInv(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, p, c):
+            pv, cv = float(p), float(c)
+            q = kl_inv(min(max(pv, 1e-9), 1 - 1e-9), max(cv, 0.0))
+            q = min(max(q, pv + 1e-9), 1 - 1e-9)
+            ctx.save_for_backward(p, torch.tensor(q, dtype=p.dtype))
+            return torch.tensor(q, dtype=p.dtype)
+
+        @staticmethod
+        def backward(ctx, g):
+            p, q = ctx.saved_tensors
+            p = p.clamp(1e-9, 1 - 1e-9)
+            dkl_dq = (q - p) / (q * (1 - q))
+            dkl_dp = torch.log(p / q) - torch.log((1 - p) / (1 - q))
+            return g * (-dkl_dp / dkl_dq), g * (1.0 / dkl_dq)
+    return KLInv.apply
+
+
+class Acc01:
+    """Rolling averages for the García-Pérez et al. (2025, Sec. 4.1, eq. 9) accuracy objective: the bound is the kl-inverse
+    at the 0-1 empirical risk p_t, and the non-differentiable grad p_t is replaced by m * grad L_xe with
+    m = rolling avg(L_01) / rolling avg(L_xe) (linear r). Implemented straight-through:
+    p = avg(L_01) + m * (L_xe - stopgrad(L_xe))  ->  value = 0-1 risk, gradient = m * grad L_xe."""
+    def __init__(self, decay=0.99):
+        self.decay, self.e01, self.exe = decay, None, None
+
+    def __call__(self, bce, err01):
+        b, e = float(bce), float(err01)
+        self.e01 = e if self.e01 is None else self.decay * self.e01 + (1 - self.decay) * e
+        self.exe = b if self.exe is None else self.decay * self.exe + (1 - self.decay) * b
+        m = self.e01 / max(self.exe, 1e-8)
+        return self.e01 + m * (bce - bce.detach())
+
+
 def pb_objective(emp, kl, conf, n, kind):
     """Training surrogate of the PAC-Bayes-kl bound. emp: bounded empirical loss (tensor), kl: KL (tensor).
     mcallester: emp + sqrt((KL + conf) / 2n)            (Pinsker; loose at low error)
-    quad:       (sqrt(emp + c/2) + sqrt(c/2))^2, c = (KL + conf) / n   (refined Pinsker, Perez-Ortiz et al. f_quad)"""
+    quad:       (sqrt(emp + c/2) + sqrt(c/2))^2, c = (KL + conf) / n   (refined Pinsker, Perez-Ortiz et al. f_quad)
+    klinv:      kl^{-1}(emp, c) exactly (differentiable via the implicit function theorem), emp = bounded CE
+    klinv01:    kl^{-1}(p01, c) with the 0-1 risk via Acc01 (García-Pérez et al. 2025, eq. 9)"""
     import torch
     if kind == "quad":
         c = (kl + conf) / n
         return (torch.sqrt(emp + c / 2) + torch.sqrt(c / 2)) ** 2
+    if kind in ("klinv", "klinv01"):   # the certificate itself (PAC-Bayes-kl inverted); for klinv01, emp is the
+        return _klinv_fn()(emp, (kl + conf) / n)   # straight-through 0-1 risk from Acc01
     return emp + torch.sqrt((kl + conf) / (2 * n))
 
 
@@ -273,6 +316,7 @@ def run_pb(cfg):
     def sample(mu_e, sq_e):
         return {k: mu_e[k] + sq_e[k] * torch.randn(mu_e[k].shape, generator=gen, dtype=torch.float64) for k in mu_e}
 
+    acc01 = Acc01()
     phase1 = cfg["epochs"] // 2 if norm == "bn_stat" else cfg["epochs"]
     for ep in range(cfg["epochs"]):
         if norm == "bn_stat" and ep == phase1:     # freeze batch statistics into posterior parameters
@@ -295,6 +339,8 @@ def run_pb(cfg):
             p = torch.softmax(out, 1).gather(1, ytr[idx, None]).squeeze(1)
             bce = (-torch.log(p.clamp_min(pmin)) / math.log(1 / pmin)).mean()
             kl = kl_gauss(mu_e, sq_e, m0, s0, sd)
+            if cfg.get("objective") == "klinv01":
+                bce = acc01(bce, (out.argmax(1) != ytr[idx]).double().mean())
             obj = pb_objective(bce, kl, conf, n, cfg.get("objective", "mcallester"))
             opt.zero_grad(); obj.backward(); opt.step()
 
@@ -363,7 +409,7 @@ def main():
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--norms", default="none,ln,bn_ref,bn_param")
     ap.add_argument("--modes", default="plain,inv")
-    ap.add_argument("--objective", default="mcallester", choices=["mcallester", "quad"])
+    ap.add_argument("--objective", default="mcallester", choices=["mcallester", "quad", "klinv", "klinv01"])
     a = ap.parse_args()
     L = lambda x, f: [f(v) for v in x.split(",")]
     common = dict(data=a.data, depth=a.depth, epochs=a.epochs, lr=a.lr, M=a.M, threads=a.threads, block=a.block,

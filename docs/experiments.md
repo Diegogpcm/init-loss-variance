@@ -15,7 +15,8 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-norm | Normalization in PAC-Bayes; invariance-aware KL | `pacbayes_norm.py`, `summarize_norm.py` | `results/v2/pacbayes_norm.jsonl`, `norm_summary.md` (block estimator); `*_m150.jsonl` superseded | final |
 | E-normdet | Ordinary training: none / LN / BN | `pacbayes_norm.py --deterministic` | `results/v2/norm_deterministic.jsonl` | final |
 | E-r1 | Pull-to-init sweep, hybrid fine-tuning, 3 seeds; variational seeds | `pacbayes_sgd.py --grid custom --finetune`, `pacbayes_norm.py --seeds`, `summarize_seeds.py` | `results/v2/sgd_r1_wdsweep.jsonl`, `sgd_r1_summary.md`, `pacbayes_norm_seeds.jsonl`, `norm_seeds_summary.md` | final |
-| E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl` | running |
+| E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl`, `r2a_summary.md`, `r2b_summary.md` | final |
+| E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | running |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -181,3 +182,29 @@ Findings:
   the f_quad objective (refined Pinsker; Pérez-Ortiz et al.).
 - **bn_stat is the best and most stable variational method**; the translated-prior SGD posterior beats the best
   variational posterior by ≈0.04.
+
+## E-r2: f_quad objective; BN × SGD temperature × pull (3 seeds)
+
+**Variational, inv mode, f_quad vs McAllester** (`r2a_summary.md` vs `norm_seeds_summary.md`):
+
+| variant | width | σ₀ | McAllester | f_quad |
+|---|---|---|---|---|
+| bn_stat | 64 | 0.02 | 0.397 ± 0.008 | 0.383 ± 0.008 |
+| bn_stat | 64 | 0.05 | 0.395 ± 0.003 | **0.379 ± 0.002** |
+| bn_stat | 128 | 0.02 | 0.398 ± 0.003 | 0.387 ± 0.004 |
+| bn_stat | 128 | 0.05 | 0.411 ± 0.002 | 0.396 ± 0.003 |
+| ln | 64 | 0.05 | 0.399 ± 0.002 | 0.387 ± 0.002 |
+| none | 64 | 0.05 | 0.417 ± 0.023 | 0.404 ± 0.017 |
+
+f_quad improves every variational setting by 0.011–0.016 (Gibbs test error ≈ 0.28 vs 0.30), confirming that the
+surrogate objective, not the posterior family, limited variational training.
+
+**SGD + hybrid (f_quad fine-tuning)** (`r2b_summary.md`):
+- bn_stat hybrid: **0.365 ± 0.001** (width 64, lr 0.05, batch 32, pull 3e-2) and 0.368–0.369 at batch 128, beating
+  both the bn_stat SGD posterior (0.376) and pure variational bn_stat (0.379). With the McAllester surrogate the hybrid
+  was worse than the SGD posterior (round 1).
+- none: the translated prior is still best (0.354 ± 0.001 isotropic) vs hybrid 0.373.
+- **Temperature × pull:** with pull ≥ 1e-2, raising lr to 0.2 worsens the SGD solution (test 0.17–0.20) and the
+  certificate (0.41–0.45); lr 0.2 with batch 32 diverges in 7 of 12 bn_stat runs (the hybrid still rescues the
+  0.90-error solutions to ≈0.40). The round-0 correlation "higher lr/B → better certificate" (wd 1e-3, σ₀ = 0.1
+  selected) does not carry over to the strong-pull regime.

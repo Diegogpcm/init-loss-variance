@@ -15,7 +15,13 @@ def ms(v):
 
 
 kind, files = sys.argv[1], sys.argv[2:]
-rows = [json.loads(l) for f in files for l in open(f)]
+import os
+rows = [json.loads(l) for f in files if os.path.exists(f) for l in open(f)]
+bad = [r for r in rows if r.get("diverged") or r.get("error")]
+if bad:
+    print(f"({len(bad)} diverged/failed runs excluded: " + ", ".join(
+        f"{r['norm']} w{r['width']} lr{r.get('lr')} B{r.get('batch')} wd{r.get('wd_init')} s{r['seed']}" for r in bad) + ")\n")
+rows = [r for r in rows if not (r.get("diverged") or r.get("error"))]
 g = defaultdict(list)
 if kind == "sgd":
     for r in rows:

@@ -25,7 +25,7 @@ from multiprocessing import Pool
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pacbayes_norm import init_params, forward, bn_stats, kl_inv, load, gibbs_block, pb_objective, STAT_PRIOR_SD  # noqa: E402
+from pacbayes_norm import init_params, forward, bn_stats, kl_inv, load, gibbs_block, pb_objective, Acc01, STAT_PRIOR_SD  # noqa: E402
 
 S0_GRID = [0.01, 0.02, 0.05, 0.1, 0.2]
 K_GRID = [0, 10, 40]
@@ -86,6 +86,11 @@ def run(cfg):
                     snaps.append(theta.detach().clone())
     Th = torch.stack(snaps)                                   # (T, P)
     th_bar = Th.mean(0)
+    if not torch.isfinite(Th).all():                          # SGD diverged: record it, no posterior
+        return dict(norm=norm, depth=depth, width=width, lr=lr, batch=B, wd_init=wd, seed=cfg["seed"], n=n,
+                    n_params=P, objective=cfg.get("objective", "mcallester"), diverged=True, T=len(snaps),
+                    test_err_last=float("nan"), test_err_swa=float("nan"), train_err_swa=float("nan"),
+                    dist_init=float("nan"), seconds=time.time() - t0)
 
     def err(v, X, y, bs=10000):
         wrong = 0
@@ -179,6 +184,7 @@ def run(cfg):
         mu_z = zbar.clone().requires_grad_(True)
         rho_z = torch.log(torch.expm1(sig0)).requires_grad_(True)
         ft_opt = torch.optim.Adam([mu_z, rho_z], lr=cfg["ft_lr"])
+        acc01 = Acc01()
         sp, pmin = torch.nn.functional.softplus, 1e-4
         for ep in range(cfg["finetune"]):
             perm = torch.randperm(n, generator=gen)
@@ -190,6 +196,8 @@ def run(cfg):
                 p = torch.softmax(out, 1).gather(1, ytr[idx, None]).squeeze(1)
                 bce = (-torch.log(p.clamp_min(pmin)) / math.log(1 / pmin)).mean()
                 kl = 0.5 * (sz ** 2 + mu_z ** 2 - 1 - 2 * torch.log(sz)).sum()
+                if cfg.get("objective") == "klinv01":
+                    bce = acc01(bce, (out.argmax(1) != ytr[idx]).float().mean())
                 obj = pb_objective(bce, kl, conf, n, cfg.get("objective", "mcallester"))
                 ft_opt.zero_grad(); obj.backward(); ft_opt.step()
         with torch.no_grad():
@@ -221,6 +229,16 @@ def run(cfg):
     return res
 
 
+def safe_run(cfg):
+    """One failing configuration must not take down the whole pool."""
+    import traceback
+    try:
+        return run(cfg)
+    except Exception:
+        return dict({k: v for k, v in cfg.items() if k != "data"}, error=traceback.format_exc()[-2000:],
+                    test_err_swa=float("nan"), dist_init=float("nan"), T=0, seconds=0.0)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
@@ -246,7 +264,7 @@ def main():
     ap.add_argument("--seeds", default="0")
     ap.add_argument("--finetune", type=int, default=0, help="epochs of direct bound optimization after SGD")
     ap.add_argument("--ft-lr", type=float, default=0.01, help="Adam lr in whitened (prior-sd) units")
-    ap.add_argument("--objective", default="mcallester", choices=["mcallester", "quad"])
+    ap.add_argument("--objective", default="mcallester", choices=["mcallester", "quad", "klinv", "klinv01"])
     a = ap.parse_args()
     common = dict(data=a.data, depth=2, epochs=a.epochs, collect_epochs=a.collect_epochs, T=a.T, M=a.M,
                   M_sel=a.M_sel, sel_n=a.sel_n, threads=a.threads, seed=0, block=a.block, passes=a.passes)
@@ -269,7 +287,7 @@ def main():
         cfgs = [dict(common, norm=nm, width=32, lr=0.05, batch=128, wd_init=1e-3) for nm in ("none", "bn_stat")]
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as fh, Pool(min(a.workers, len(cfgs))) as pool:
-        for r in pool.imap_unordered(run, cfgs):
+        for r in pool.imap_unordered(safe_run, cfgs):
             fh.write(json.dumps(r) + "\n"); fh.flush()
             c, ci = r.get("cert", {}), r.get("cert_iso") or {}
             print(f"{r['norm']:8s} w{r['width']} lr={r['lr']} B={r['batch']} wd={r['wd_init']}: SWA test {r['test_err_swa']:.4f} "
