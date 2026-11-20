@@ -6,9 +6,15 @@ Candidate framings, ranked by current evidence. Update as results come in.
 
 **Thesis.** SGD's noise, made explicit (DP-SGD), lets a certificate charge data reuse at ~T/(2ν²n) nats instead of
 thousands of nats of parameter-space KL. Certify the trained network itself via MI + disintegrated PAC-Bayes
-(theory.md §14). Headline: MNIST 0.099 ± 0.004 (recipe pre-registered on Fashion), Fashion 0.273 vs 0.347 for the best
-Gaussian PAC-Bayes. Needed: tail bound for ı with amplification (the main technical contribution if it works), CIFAR-10,
-careful comparison with Lampert & Zakerinia (2026), Lotfi et al. (2022), Dziugaite & Roy (2018). Threat: the certified
+(theory.md §14). With the tail bound of Lampert, Cairney-Leeming & Zakerinia (2026, v2, Thm 8; theirs, not ours):
+MNIST 0.084 ± 0.005 and CIFAR-10 0.715 ± 0.006 (recipe pre-registered on Fashion), Fashion 0.249 against 0.347 for the
+best Gaussian PAC-Bayes.
+- The amplified tail bound is no longer a contribution of ours; L-CL-Z v2 already has it, and already certifies the
+  DP-SGD output (their Cor. 6). Their MNIST h₀ is 0.248.
+- Our contribution therefore shifts to: (i) the regime and recipe (tiny I, data-free features, batch-size invariance,
+  certifying h₀ beats prior + posterior); (ii) a structured tail bound for multi-epoch Poisson DP-SGD, open, worth about
+  0.01–0.02 (theory.md §14.1); (iii) the Gaussian-pipeline improvements.
+- Comparisons needed: L-CL-Z, Lotfi et al. (2022), Dziugaite & Roy (2018). Threat: the certified
 models are weak (DP-limited accuracy); reviewers may see it as "DP generalization" rather than PAC-Bayes for deep nets.
 
 ## A. Practice-aware PAC-Bayes certificates for neural networks (lead candidate)

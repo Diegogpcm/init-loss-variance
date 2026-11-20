@@ -18,7 +18,7 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl`, `r2a_summary.md`, `r2b_summary.md` | final |
 | E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | final (`objectives_summary.md`) |
 | E-online | Trajectory certificates from one SGD pass: progressive validation and online PAC-Bayes (OPBTrain) | `online_bounds.py`, `summarize_online.py` | `results/v2/online_bounds.jsonl`, `online_summary.md` | final |
-| E-dp | Certificate for a DP-SGD-trained network via mutual information (+ Markov); Fashion grid and pre-registered MNIST transfer; Gaussian PAC-Bayes on MNIST | `dp_sgd_bound.py`, `summarize_dp.py`, `run_mnist_transfer.sh`, `pacbayes_norm.py` | `results/v2/dp_sgd_r{1,2,3_*}.jsonl`, `dp_transfer_*.jsonl`, `mnist_pb_*.jsonl`, `dp_summary.md` | final |
+| E-dp | Certificate for a DP-SGD-trained network via mutual information (+ Markov, then L-CL-Z Thm 8 tail); Fashion grid and pre-registered MNIST transfer; Gaussian PAC-Bayes on MNIST | `dp_sgd_bound.py`, `summarize_dp.py`, `run_mnist_transfer.sh`, `pacbayes_norm.py` | `results/v2/dp_sgd_r{1,2,3_*}.jsonl`, `dp_transfer_*.jsonl`, `mnist_pb_*.jsonl`, `dp_summary.md` | final |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -314,8 +314,10 @@ Findings:
   the published data-free certificates we know (Lotfi et al. 0.116, Pérez-Ortiz CNN 0.2165, Lampert & Zakerinia 0.29),
   for a *deterministic* network rather than a Gibbs predictor. The model is weak (5.8% MNIST test error). On MNIST,
   our Gaussian pipeline (0.228) also beats García-Pérez et al.'s best MLP certificate (0.315, 3×600 MLP).
-- The regime is extreme privacy: I ≈ 12 nats for 60k examples. The certificate is limited by (i) the Markov factor
-  1/δ₁ = 42 (no-Markov value 0.069 on MNIST) and (ii) training error under heavy noise (noise norm ∝ √d, hence small
+- The regime is extreme privacy: I ≈ 12 nats for 60k examples. The certificate is limited by (i) the tail of the
+  information density: Markov 1/δ₁ = 42, replaced on 2026-11-20 by L-CL-Z Thm 8 (κ = 185 against 522;
+  `tail_bounds.py`, `rescore_tail.py`, table in dp_summary.md). This gives MNIST 0.084, Fashion 0.249, CIFAR-10 0.715.
+  The no-Markov value is 0.069 on MNIST. and (ii) training error under heavy noise (noise norm ∝ √d, hence small
   models and good data-free features win).
 - Gaussian PAC-Bayes on MNIST confirms the Fashion ordering: BN statistics as parameters > plain (0.228 vs 0.267), and
   both ≫ the f_quad / plain-KL baseline (0.349).

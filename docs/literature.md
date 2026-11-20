@@ -87,8 +87,29 @@ Hoeffding-type slack λmK²/2.
 
 ## Differential privacy / information-theoretic certificates
 
-**Lampert & Zakerinia (2026). From privacy to generalization: linear max-information bounds for DP-SGD.
-arXiv:2605.26222.** *(read via HTML, appendix partly)* Thm 1: high-probability max-information of DP-SGD (streaming or
+**Lampert, Cairney-Leeming & Zakerinia (2026, v2). From privacy to generalization: linear max-information bounds for
+differentially private learning algorithms. arXiv:2605.26222v2.** *(PDF text read in full for Thms 7–8, App. B.3, App. C;
+supersedes the v1 notes below.)*
+- Thm 1: (ε,δ)-DP ⇒ I∞^β ≤ min{nε, ⅛nε² + ε√((n/2)ln(1/β₀)) + …}, with β₀ = β − nδ.
+- Thm 2 = Thms 7–8, for (α, ε)-RDP (replace-one).
+  - Thm 7 (Hölder over the n per-example increments): κ = n(ε + ln(1/β)/(α−1)).
+  - **Thm 8**: κ = v⋆ + 2√(v⋆L₂) + L₂/(α−1), with v⋆ = n/(2(α−1)²)·asinh²√((e^{(α−1)ε} − 1)/β₁).
+  - Proof of Thm 8: posterior-to-prior filtration over examples; symmetrised Rényi J_i with E J_i ≤ e^{(α−1)ε};
+    backward integration under the product measure; Markov on (1/n)ΣJ_i inside a concave ψ.
+  - **Poisson amplification enters through ε**: Opacus add/remove RDP is converted to replace-one by the weak triangle
+    inequality (App. C), and α is chosen from 2…5000.
+- Thm 3 (Gaussian mechanism) and Thm 4 (streaming DP-SGD) exploit Gaussian structure: κ ≈ I + O(√(I·L)) + O(L).
+  Multi-epoch Poisson is left open for these structured bounds.
+- PAC-Bayes Thm 5: kl ≤ (KL(ρ‖π) + I∞^{δ/2} + ln(4√n/δ))/n. Corollary 6 sets ρ = π, i.e. it certifies the DP-SGD output.
+- Experiments use our pacbayesgradients code (García-Pérez et al.).
+  - MNIST 3×600 MLP: data-free 0.325; streaming prior ρ 0.273; Poisson prior ρ **0.233**, h₀ 0.248 (κ = 1,224).
+  - CIFAR-10: h₀ 0.780 / 0.797 / 0.848 (4 / 9 / 15 layers); ρ **0.716** (4 layers, against data-free 0.738), 0.782, 0.757.
+- **Relation to us:** their Thm 8 is exactly our "open lever". Applying it to our recipe A (I_ub = 12) gives κ = 185
+  (Markov: 522), so MNIST 0.084, Fashion 0.248, CIFAR-10 0.715 (theory.md §14.1). The gap to their h₀ numbers (0.248 /
+  0.780) comes from the recipe: small models on data-free features with very noisy, short training (I ≈ 12 nats).
+
+**[v1 notes] Lampert & Zakerinia (2026). From privacy to generalization: linear max-information bounds for DP-SGD.
+arXiv:2605.26222v1.** *(read via HTML, appendix partly)* Thm 1: high-probability max-information of DP-SGD (streaming or
 batch, disjoint batches, each example once per epoch, n ≥ Tm), I∞^β ≤ ½·E·T·ν + E·inf_λ (1/λ)[T·F((λ+λ²)/2) + ln(E/β)],
 ν = mζ²/σ², F(x) = (16ν²x² + νx)/(1 − 2νx); leading term = n·E·ζ²/(2σ²) = nρ (linear in n, no Markov). Proof: Jensen
 against an *independent copy* S̃ of the whole dataset, then per-step Gaussian log-likelihood expansion and an MGF bound.

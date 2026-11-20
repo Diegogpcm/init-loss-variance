@@ -259,26 +259,69 @@ Notes.
 - This is the information-theoretic counterpart of Dziugaite & Roy (2018) (DP prior + PAC-Bayes; they need *pure*
   ε-DP and use max-information, ε²/2 per example). Here only a KL/MI bound is needed, so Gaussian noise suffices with
   explicit constants.
-- The Markov factor 1/δ₁ is the main loss. Removing it needs tail bounds on ı (e.g. Rényi/Sibson information).
+- The Markov factor 1/δ₁ was the main loss; §14.1 replaces it with a high-probability bound (L-CL-Z Thm 8).
   The "no-Markov" column in the experiments plugs E[ı] in place of the tail and is *not* a certificate, only the
   limit of this route.
 - Selection over a hyperparameter grid of K configurations must divide δ₁ by K (linear cost), unlike the ln K of the
   Gaussian-prior union bounds.
 
-**Comparison with Lampert & Zakerinia (2026).** They bound the β-approximate *max-information* of DP-SGD directly
+**Comparison with Lampert & Zakerinia (2026), v1.** v1 bounds the β-approximate *max-information* of DP-SGD directly
 (high probability, no Markov), by Jensen against an independent copy S̃ of the whole dataset. That comparison sees the
 full batch change (all m examples differ), so it cannot use subsampling amplification: the leading term is
 n·E/(2σ²) (σ = noise multiplier), versus E·q·n/(2σ²) = epochs·B/(2σ²) for our per-example chain with Poisson
-sampling, a factor q = B/n smaller. In our best Fashion setting (B = 4096, ν = 0.005, 5 epochs) their κ is ≈ 1,300 nats
-and our Markov-inflated budget is (24.4 + 0.37)/0.024 ≈ 1,030 nats: similar, for opposite reasons. In their PAC-Bayes
-use the DP-SGD output is a prior and a Gaussian posterior still pays KL ≈ 5,000.
+sampling, a factor q = B/n smaller. In their PAC-Bayes use the DP-SGD output is a prior and a Gaussian posterior still
+pays KL ≈ 5,000.
 
-**Open lever (the main one): a high-probability bound on ı with amplification.** The certificate with E[ı] in place
-of the tail ("no-Markov" column) is 0.05–0.08 tighter than the certificate. A tail bound of the form
-P[ı > I_ub + O(√(I_ub·ln(1/β)))] ≤ β, with the per-example subsampled-Gaussian accounting, would remove most of it.
-The difficulty: the per-example chain ı = Σᵢ ln p(Y|z_≤i)/p(Y|z_<i) has conditional Rényi terms that are controlled by
-RDP only on average over Y, not pointwise (pure DP gives pointwise control; Dwork et al. 2015), and the
-independent-copy route loses the amplification. Lampert & Zakerinia list the Poisson extension as future work.
+### 14.1 The tail of ı with amplification: Lampert, Cairney-Leeming & Zakerinia (2026, v2), Thm 8 [theirs; applied here]
+
+v2 of the same paper (arXiv:2605.26222v2) contains the high-probability bound we listed as the open lever. It works for
+*any* mechanism that is (α, ε)-RDP under replace-one neighbours, so Poisson amplification enters through ε.
+- Per-example filtration F_i = σ(Y, z_≤i). ı = Σᵢ ln rᵢ(zᵢ), where rᵢ is the posterior-to-prior density of zᵢ given
+  (Y, z_<ᵢ), with the suffix z_>ᵢ marginalised.
+- J_i = H_α(post‖D)·H_α(D‖post) = exp((α−1)·symmetrised Rényi) ≥ 1. Joint convexity of the Hellinger integral
+  (the suffix is mixed with the same weights) plus replace-one RDP give E J_i ≤ e^{(α−1)ε}.
+  This is the only place privacy is used.
+- Let v_i = ψ(J_i − 1)/(2(α−1)²), with ψ(u) = asinh²√u. Backward integration under the product measure gives
+  E exp(λı − b_λ Σv_i) ≤ 1, with b_λ = λ + λ²/(1 − λ/(α−1)) and λ < α − 1.
+- The realised sum Σv_i is controlled by Jensen (ψ is concave) plus Markov on (1/n)Σ(J_i − 1), at level β₁.
+  This is still a Markov step, but it sits inside ψ, which grows like ¼ln²u, so it costs a log factor instead of 1/β.
+
+Result: P[ı > v⋆ + 2√(v⋆L₂) + L₂/(α−1)] ≤ β₁ + β₂, where v⋆ = n/(2(α−1)²)·ψ((e^{(α−1)ε} − 1)/β₁) ≤ (n/8)(ε + ln(4/β₁)/(α−1))²
+and L₂ = ln(1/β₂).
+
+Combined with step 2 above (disintegrated PAC-Bayes on the trained network, union with δ₂), the certificate becomes
+kl ≤ (κ_LZ8 + ln(2√n/δ₂))/n, again with β = 0.024 and δ₂ = 0.001. κ_LZ8 depends only on (n, q, σ, T), so optimising
+α and β₁ is free. Replacing Markov by it needs no union bound, because the choice is data-free.
+
+Implementation: experiments/tail_bounds.py.
+- Replace-one RDP is obtained from add/remove RDP, using the integer-order formula of Mironov, Talwar & Zhang (2019),
+  and the weak triangle inequality as in their App. C: ε_rep(α) = (2α−1)/(2(α−1))·Tε_add(2α) + Tε_add(2α−1).
+- We checked numerically that this conversion is within 1–3% of the directly computed replace-one divergence.
+- We also checked numerically that the antipodal pair h = −h′ is the worst case over |h|, |h′| ≤ 1 in 2-D, so a
+  direct replace-one accountant would gain nothing.
+
+At recipe A (n = 60k, B = 4096, ν = 0.01, 10 epochs; I_ub = 12.2): κ_Markov = 522, κ_LZ8 = 185 (α ≈ 82, β₁ ≈ 0.02),
+against the non-certificate E[ı] ≈ 12. Asymptotically κ_LZ8 ≈ 2·I_ub·ln(4/β₁) ≈ 11·I_ub, against 42·I_ub for Markov.
+
+**Where the remaining slack is (κ_LZ8 ≈ 185 against I ≈ 12):**
+- (a) *Replace-one versus remove.* Worst-case replace-one is antipodal, |h − h′| = 2, which is 4× the add/remove ρ.
+  The quantity actually used, E_{z,z′} H_α(P_z‖P_z′), only needs E|h(z) − h(z′)|² = 2·Var h ≤ 2.
+  So a factor ≈ 2 in v⋆ is lost to the sup. Recovering it would need an "average-pair" RDP that still composes
+  adaptively; plain averages do not compose.
+- (b) *The Markov step on Σᵢ(J_i − 1).* The realised posterior divergences share the same Y. If every example's
+  gradient variation lies along one fixed direction at every step, Σᵢ(J_i − 1) ∝ G², with a single Gaussian G built
+  from the summed noise, so it is χ²₁-like. A bound that uses only RDP therefore cannot drop the ln(1/β₁) factor
+  entirely.
+  In that aligned case, though, I_ub itself is very loose: the channel is effectively one scalar Gaussian, so the
+  true I ≈ ½ln(1 + 2I_ub). For diverse gradient directions over T steps with fresh noise, the sum concentrates like
+  χ²_{T·r_eff}.
+  L&Z exploit exactly this step structure for *streaming* DP-SGD (their Thm 4, close to I + O(√(I·L)) + O(L)). There,
+  batch t is fresh data, so the posterior predictive of step t is the population one. With multi-epoch reuse, the
+  posterior predictive involves the posterior over S, whose cross-example correlations would have to be controlled.
+  A Dobrushin-type route is open: the pair interactions are q²⟨h_i,h_j⟩/σ² per step, summed to ≤ 2I/n per pair.
+- Ceiling at fixed hyperparameters (MNIST A): 0.084 (Thm 8) → 0.073 if κ = 2I + 2√(2IL), → 0.071 if κ = I + 2√(IL);
+  the not-a-certificate E[ı] plug-in gives 0.069. Fashion: 0.246 → 0.230 / 0.227 / 0.224. CIFAR-10: 0.715 → 0.696 / 0.693 / 0.689.
+  The Markov → Thm 8 step captured about 60% of the gap between the Markov certificate and E[ı].
 
 **Selection.** Hyperparameter selection over K configurations on the same S costs δ₁/K (linear) on this route. Protocol
 used: choose recipes on Fashion-MNIST, then apply them *unchanged* to MNIST (pre-registered transfer, no selection on

@@ -75,3 +75,29 @@ Best previous Fashion certificate (Gaussian PAC-Bayes): 0.347 ± 0.001.
 | dp_sgd_r3_gabor_lin | gabor | 0 | ln | — | 8340 | 4096 | 0.02 | 269 | 0.3 | cos | 0.2546 | 0.2491 | 6.1 | **0.3004** | 0.2652 |
 | dp_sgd_r3_gabor_lin | gabor | 0 | ln | — | 8340 | 4096 | 0.01 | 67 | 1.0 | cos | 0.2549 | 0.2514 | 6.1 | **0.3006** | 0.2655 |
 | dp_sgd_r3_gabor_lin | gabor | 0 | ln | — | 8340 | 4096 | 0.005 | 27 | 3.0 | cos | 0.2440 | 0.2416 | 9.8 | **0.3007** | 0.2556 |
+
+## Tail by Lampert, Cairney-Leeming & Zakerinia (2026, v2) Thm 8 instead of Markov (2026-11-20)
+
+Same runs, rescored with `experiments/rescore_tail.py`; κ depends only on (n, q, σ, T), with β = 0.024 and δ₂ = 0.001.
+Recipe A: κ = 185 (Markov 522). Recipe B: κ = 104 (Markov 269).
+
+| dataset (recipe A unless noted) | seeds | Markov | **Thm 8** | test |
+|---|---|---|---|---|
+| Fashion-MNIST (tuning seed 0 + seeds 1, 2) | 3 | 0.273 ± 0.003 | **0.249 ± 0.003** | 0.210 |
+| MNIST (pre-registered transfer) | 3 | 0.0995 ± 0.0050 | **0.0836 ± 0.0047** | 0.058 |
+| CIFAR-10 (pre-registered transfer) | 3 | 0.740 ± 0.006 | **0.715 ± 0.006** | 0.675 |
+| MNIST, recipe B | 3 | 0.116 ± 0.004 | 0.105 ± 0.004 | 0.081 |
+| CIFAR-10, recipe B | 3 | 0.761 ± 0.007 | 0.745 ± 0.007 | 0.716 |
+
+Re-ranking the Fashion tuning grid under Thm 8: the top of the grid is flat. Configurations within 0.003 of each other
+are ν = 0.01 with 10 or 20 epochs and ν = 0.005 with 10 epochs, lr 1. Recipe A stays at the top within seed noise, so
+the pre-registered selection is unchanged.
+
+Ceiling at fixed hyperparameters (MNIST A, seed-mean train error):
+
+| κ | value | certificate |
+|---|---|---|
+| Thm 8 | 185 | 0.084 |
+| 2I + 2√(2IL) | 43 | 0.073 |
+| I + 2√(IL) | 26 | 0.071 |
+| E[ı], not a certificate | 12 | 0.069 |

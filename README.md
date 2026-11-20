@@ -286,24 +286,28 @@ tables in [`results/v2/dp_summary.md`](results/v2/dp_summary.md).
 
 The certified predictor is the network output by noisy, clipped, Poisson-subsampled SGD (DP-SGD). The prior is the
 algorithm's (unknown, data-free) output marginal. A disintegrated PAC-Bayes-kl bound charges the information density,
-and Markov's inequality bounds it by I(S; W)/δ₁. The mutual information is bounded with the 1/n per example:
+whose tail is bounded with high probability by Thm 8 of Lampert, Cairney-Leeming & Zakerinia (2026, v2) from replace-one
+Rényi DP with Poisson amplification (earlier: Markov, I(S; W)/δ₁). The mutual information is bounded with the 1/n per example:
 I ≤ n·T·KL(subsampled Gaussian) ≈ T/(2ν²n), where ν is the noise std on the mean gradient. SGD noise is what makes
 reusing the data across epochs cheap, and it is now part of the certificate.
 
 | setting (data-free, no held-out data) | certificate |
 |---|---|
 | Fashion-MNIST, best Gaussian PAC-Bayes (bn_stat + inv KL + klinv01) | 0.347 ± 0.001 |
-| Fashion-MNIST, DP-SGD + MI, linear on data-free Gabor features (3 seeds) | **0.273 ± 0.003** (test 0.210) |
-| MNIST, same recipe transferred unchanged (3 seeds) | **0.099 ± 0.004** (test 0.058) |
+| Fashion-MNIST, DP-SGD, linear on data-free Gabor features (3 seeds): tail by L-CL-Z Thm 8 / by Markov | **0.249 ± 0.003** / 0.273 ± 0.003 (test 0.210) |
+| MNIST, same recipe transferred unchanged (3 seeds): Thm 8 / Markov | **0.084 ± 0.005** / 0.099 ± 0.004 (test 0.058) |
 | MNIST, our Gaussian PAC-Bayes pipeline (bn_stat MLP) / Pérez-Ortiz-style f_quad baseline | 0.228 / 0.349 |
-| CIFAR-10, same recipe unchanged (3 seeds) / García-Pérez 2025 best data-free CNN | 0.740 ± 0.005 / 0.738 ± 0.007 |
-| MNIST, published: García-Pérez 2025 (MLP 3×600), Pérez-Ortiz 2021 (CNN), Lampert & Zakerinia 2026 (DP-SGD prior), Lotfi 2022 (compression) | 0.315 / 0.2165 / 0.29 / 0.116 |
+| CIFAR-10, same recipe unchanged (3 seeds): Thm 8 / Markov | **0.715 ± 0.006** / 0.740 ± 0.005 (test 0.675) |
+| CIFAR-10, published: García-Pérez 2025 best data-free CNN; L-CL-Z 2026 v2 best (DP-SGD prior + posterior, 4-layer CNN) | 0.738 ± 0.007; 0.716 ± 0.007 |
+| MNIST, published: García-Pérez 2025 (MLP 3×600), Pérez-Ortiz 2021 (CNN), L-CL-Z 2026 v2 (DP-SGD prior: posterior / network), Lotfi 2022 (compression) | 0.315 / 0.2165 / 0.233 / 0.248 / 0.116 |
 
 - The optimum is a very noisy, short run (I ≈ 6–25 nats, i.e. ~10⁻⁴ nats per example). Small models (linear on
   data-free features) beat MLPs, as in DP practice (Tramèr & Boneh 2021). The generalization gap is ≈ 0; the slack is
-  the Markov factor (the "no-Markov" value is 0.224 on Fashion and 0.069 on MNIST) plus training error under noise.
-- Main open lever: a high-probability bound on the information density that keeps subsampling amplification
-  (theory.md §14). Lampert & Zakerinia (2026) get high probability but lose amplification.
+  the tail of the information density (κ = 185 nats with Thm 8 against E[ı] ≤ 12; the not-a-certificate plug-in E[ı]
+  gives 0.224 on Fashion and 0.069 on MNIST) plus training error under noise.
+- Remaining lever (theory.md §14.1): Thm 8 still pays ≈ ln(4/β₁) for the realised posterior divergences, plus a factor
+  ≈ 2 for replace-one. Structured (Gaussian, step-wise) tail bounds as in L-CL-Z's streaming Thm 4 would reach about
+  0.073 on MNIST, but multi-epoch reuse needs posterior-correlation control (open).
 
 ## Next steps (proposed)
 

@@ -120,9 +120,29 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     unchanged to CIFAR-10: 0.740 ± 0.005 (tie). CIFAR download: Toronto mirror stalled; used the Hugging Face parquet
     (uoft-cs/cifar10), converted to channel-first rows in /tmp/lv_cifar10_raw.npz.
 
-## Next steps (as of 2026-11-20)
-0. DP/MI route: (a) high-probability tail for the information density with amplification (removes the 1/δ₁ = 42
-   factor; worth ~0.03 on MNIST, ~0.05 on Fashion); (b) CIFAR-10 with data-free features (ScatterNet) against
+27. **Tail bound with amplification (author: "work on the tail bound with amplification").** Found that v2 of
+    Lampert et al. (arXiv:2605.26222v2, with Cairney-Leeming) already proves it: Thm 8 gives an RDP-only bound
+    (replace-one; Poisson amplification enters through ε) via a posterior-to-prior filtration over examples and
+    Markov *inside* asinh². Implemented it (`experiments/tail_bounds.py`) and rescored all runs (`rescore_tail.py`).
+    - Recipe A: κ = 185 against Markov's 522.
+    - Pre-registered transfers: MNIST 0.0995 → **0.0836**, CIFAR-10 0.740 → **0.715** (L-CL-Z's best CIFAR is 0.716,
+      García-Pérez's 0.738), Fashion 0.273 → 0.249. The Fashion selection is unchanged.
+    - Checks: the weak-triangle add/remove → replace-one conversion is within 1–3% of direct accounting; the antipodal
+      pair is the worst case in 2-D.
+    - Remaining slack, analysed in theory.md §14.1: (a) replace-one sup versus average pair, about 2×; (b) Markov on
+      the realised Σ J_i, about ln(4/β₁).
+    - (b) is unavoidable from RDP alone, because aligned gradients give a χ²₁-like sum. Removing it needs the Gaussian
+      step structure, as in their streaming Thm 4, extended to data reuse; that is open.
+    - Ceiling at fixed hyperparameters: MNIST 0.071–0.073, Fashion about 0.23, CIFAR-10 about 0.695.
+    - Ruled out on the way, by our own analysis: I_α^Sibson(S;Y) ≤ Σᵢ sup I_α(zᵢ;Y|z₋ᵢ) is false for every α
+      tested (1.5, 2, 3). Our counterexample: a "diagonal" channel where Y reveals the example index only when z₁ = z₂;
+      at α = 2, k = 100 it gives 1.38 against 0.36. Per-example RDP is infinite there, so the RDP version is still possible.
+      Converting RDP → (ε,δ) → the Rogers et al. max-information is worse than Markov at these parameters, because of
+      the per-example ln(1/δ_DP).
+
+## Next steps (as of 2026-11-20, updated after entry 27)
+0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); the structured multi-epoch tail (posterior correlations) is open,
+   worth about 0.01–0.02; (b) CIFAR-10 with data-free features (ScatterNet) against
    García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior
    centred by MI + small posterior KL (Lampert & Zakerinia's structure, with our amplified MI); (d) verify the published
    MNIST numbers we compare against (Pérez-Ortiz FCN, García-Pérez MNIST) from the papers.

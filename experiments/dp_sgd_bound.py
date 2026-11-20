@@ -143,7 +143,10 @@ def run(cfg):
                train_avg=train_avg, test_avg=test_avg,
                cert01_best2=min(kl_inv(train01, conf2), kl_inv(train_avg, conf2)),
                clipped_frac=float(np.mean(clipped_frac)), seconds=time.time() - t0)
-    return res
+    # high-probability tail of the information density with amplification: Lampert-Cairney-Leeming-Zakerinia
+    # (arXiv:2605.26222v2) Thm 8 on replace-one RDP (experiments/tail_bounds.py); one tail event covers both iterates
+    from rescore_tail import rescore
+    return rescore(res)
 
 
 def safe_run(cfg):
