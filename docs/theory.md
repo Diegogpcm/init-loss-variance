@@ -397,3 +397,47 @@ itself, and is dropped once Σₜρₜ⁽ⁱ⁾ would exceed B, then the composi
 **Selection.** Hyperparameter selection over K configurations on the same S costs δ₁/K (linear) on this route. Protocol
 used: choose recipes on Fashion-MNIST, then apply them *unchanged* to MNIST (pre-registered transfer, no selection on
 MNIST), and re-seed on Fashion.
+
+## 15. Certifying a deterministic SGD-trained network: what SGD's own noise provides [diagnostics, ours]
+
+Setting: a standard ReLU MLP, 784-256-256-10 (269k parameters), trained with plain SGD (lr 0.1, batch 128, 10 epochs,
+no clipping, no noise) on Fashion. Train 8.6% / test 11.7%. Scripts: experiments/sgd_influence.py and sgd_cloud.py.
+Results: results/v2/sgd_influence_fashion_w256.json and sgd_cloud_fashion_w256.json.
+
+**15.1 Leave-one-out influence through the training dynamics.**
+- Bound: perturb the output only in the analysis, W~ = W_T + N(0, diag σ²); then
+  I(S; W~) ≤ Σᵢ E‖W_T(S) − W_T(S∖zᵢ)‖²_{diag σ⁻²}/2 (chain rule + Neu et al. 2021, Lemma 4).
+- Influence linearised through Π(I − ηH_t) and estimated with Hutchinson probes, by backpropagating through training.
+- Checks: the linearisation matches finite down-weighting at ε = 1e−4 to six digits.
+- **Linear influence** Σᵢ‖ΔWᵢ‖² ≈ 31, against ‖W_T − W₀‖² ≈ 102: only about 3× smaller than the init-centred KL.
+  Plug-in values stay vacuous (0.72 at the best width, against 0.97 for the init-centred KL).
+- **Exact leave-one-out** (48 retrains, same batches) is dominated by chaos:
+  - Every removal gives ‖ΔW‖ ≈ 1.6–1.9, with cosine ≈ 0 to the linear prediction.
+  - A float64 replay of the *unchanged* run ends 2.4 away from the float32 run.
+  - Coupled-seed stability bounds therefore cost about 3×10⁸ nats. Dead.
+
+**15.2 Is SGD's randomness a free noise?** Same init; 16 batch orders on each of two disjoint halves A and B.
+- Parameter space: per-cloud spread E‖W − mean‖² = 6.0; A–B centre shift 27.6; travel from init 47.6; init perturbed
+  by 1e−6: 3.5; two batch orders: 11.3.
+  The isotropic KL between clouds at their own scale is 6.5×10⁵, against 9.5×10⁵ init-centred: a factor of 1.5.
+  **In parameter space, seed noise does not hide the data.**
+- Function space (argmax disagreement / mean symmetric KL of the softmax outputs):
+
+  | set | within seeds | between halves |
+  |---|---|---|
+  | test | 8.3% / 0.085 | 9.9% / 0.121 |
+  | A's training points | 8.1% / 0.087 | 10.3% / 0.135 |
+
+  **In function space, seed noise accounts for about 84% of the cross-dataset disagreement.** Data-specific variation
+  adds only about 1.6–2.2 points of disagreement on top of what batch order alone produces. Within-seed disagreement,
+  8.3%, is itself close to the generalization disagreement equality regime (Jiang et al. 2022: disagreement ≈ test
+  error), against a test error of 12.8% here.
+
+**Reading.** SGD's noise matters for generalization in function space, not in parameter space. The parameter-space
+routes (stability, influence, Gaussian posteriors at the seed-cloud scale) cannot use it. The natural framework is
+information in *predictions*: f-CMI / e-CMI (Harutyunyan et al. 2021; Hellström & Durisi 2022), where randomness from
+the seed directly reduces the conditional information between the predictions on a supersample and the train/test
+selection. Open issues for a *certificate*:
+- those bounds are in expectation;
+- their estimation needs supersample (ghost) data and many retrainings.
+

@@ -183,7 +183,18 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
       "flatness of fine-tuning".
     - The best-certificate track (small models, fixed features) is now secondary.
 
-## Next steps (as of 2026-11-20, updated after entry 30)
+31. **Deterministic network via SGD noise (author: certify a deterministic network; what does SGD noise give; gradients
+    against the population, taking architecture/gradient flow into account).** Diagnostics on a standard MLP trained by
+    plain SGD on Fashion (theory.md §15).
+    - (i) Linearised leave-one-out influence through the training Jacobians is only 3× smaller than the distance from
+      init. Exact leave-one-out is swamped by chaos: float32/64 rounding alone moves the endpoint as far as removing an
+      example. Parameter-space stability is dead.
+    - (ii) Seed clouds (batch order) are small compared with the data-to-data shift in parameter space: KL ratio 1.5.
+    - (iii) In function space, seed disagreement (8.3%) is about 84% of cross-dataset disagreement (9.9%).
+    - Conclusion: SGD noise acts in function space. The matching literature is f-CMI (Harutyunyan et al. 2021),
+      e-CMI (Hellström & Durisi) and disagreement-based estimators (Jiang et al. 2022).
+
+## Next steps (as of 2026-11-20, updated after entry 31)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
    García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior
