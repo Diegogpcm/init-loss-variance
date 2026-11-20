@@ -528,3 +528,49 @@ sample-specific signal" is falsified for interpolating MLPs at this scale. §15.
 real, but it concerns which *test* points are wrong, which carries no membership information once training points are
 always fit. Any noise-based explanation must act on *training* points (not fitting some of them, i.e. DP-like
 behaviour), which plain SGD does not do.
+
+## 16. Time-uniform information via contraction (Lyapunov / hidden-state) [Altschuler & Talwar 2022 applied; negative]
+Question: can a Lyapunov / contraction property of the training dynamics stop the information from growing linearly in
+T, as §14's composition charges it?
+
+**Theorem used (AT22 Thm 3.1 / 5.1, explicit constants from their proof, eq. 3.6 + Prop. 5.6).** Requirements:
+- Projected noisy SGD w ← Π_K[(1−ηλ)w − η(g_b(w) + Z)], with Z ~ N(0, σ²I), on a ball K of diameter D.
+- Fixed-size uniform batches, convex L-Lipschitz M-smooth per-example losses, η(2λ+M) ≤ 2, so the update is
+  c-contractive with c = 1 − ηλ.
+
+Then, for replace-one neighbours, with the noise split σ² = s₁² + s₂²:
+
+  ε(α) ≤ min_{R ≤ T} [ R·S_α(b/n, s₂b/2L) + α c^{2R} D² / (2η² s₁² Σ_{k<R} c^{2k}) ]
+
+where S_α is the sampled-Gaussian RDP. This plugs into L-CL-Z Thm 8 unchanged (`experiments/pabi_account.py`).
+
+**Instance (`experiments/contractive_dp.py`).**
+- Model: linear softmax on per-example-normalised Gabor features, x̃ = [F/(2‖F‖), 1/2]. This gives data-free L = 1 and
+  M = 1/4, so no clipping is needed. No momentum. W₀ = 0.
+- Projection radius ρ: data-free, from ‖w*_λ‖ ≤ √(2 ln 10/λ) plus 3× the stationary noise norm. It was never active.
+- Only the final iterate is certified.
+
+**Results, Fashion grid** (264 runs: b ∈ {1024, 4096}, ν ∈ {0.005, 0.01, 0.02}, λ ∈ {0.001, 0.003, 0.01, 0.03},
+η ≤ 7, T ∈ {300, …, 10⁴}; `results/v2/cdp_grid_fashion.jsonl`):
+- Best certificate: 0.321 (λ = 0.001, ν = 0.02, T = 1000). There the bound is pure composition (R = T).
+  Current Fashion certificate (recipe A, Thm 8): 0.249.
+- The PABI term only helps for T ≫ 1/(ηλ). Example (λ = 0.001, T = 3000): κ 572 vs 874. Those runs certify worse.
+- Weight decay strong enough to make forgetting fast caps accuracy: best train error 0.25 at λ = 0.001, 0.28 at
+  0.003, 0.33 at 0.01, 0.35 at 0.03. The regularised optimum itself is poor; this is not under-training.
+
+**Why (structural).** For an m-strongly convex objective:
+- forgetting time T̄ ≈ ln(αD²·ηλ/(η²s₁²·ε))/(2ηλ);
+- optimisation time to accuracy ε_opt ≈ ln(1/ε_opt)/(ηλ).
+
+Both scale as 1/(ηλ), so contraction only stops charging for steps *after* convergence, which no sensible run takes.
+Contraction strong enough to forget faster than you optimise is regularisation strong enough to bias the predictor.
+- **Convex, no strong convexity:** T̄ ≈ nD/(Lη) ≈ 10⁵·D steps for our parameters. Irrelevant at T ≈ 10².
+- **Non-convex (networks):** the only dimension-free tool is a Doeblin/TV contraction of the Gaussian kernel on a
+  bounded set, 1 − θ = 2Φ(−D/(2ηs)) per step. Forgetting within T steps needs D/(ηs) ≲ 2√(2 ln T) ≈ 8: per-step noise
+  of order the diameter of the weight set, i.e. re-randomising the network every step. Reflection-coupling rates for
+  dissipative Langevin (Eberle) carry the same exp(LR²/temperature) factor. Chaos (§15.4) does not change this:
+  trajectory divergence is not contraction of laws.
+
+**Verdict.** Lyapunov / contraction arguments give a time-uniform information bound only where forgetting time ≈
+optimisation time, so they buy nothing for the certificate. In the non-convex case the constants are exp(Θ(D²/s²)).
+Route closed.

@@ -218,6 +218,18 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     - Verdict: chaos-as-noise falsified in the CMI sense. A noise-based explanation must act on training points
       (not fitting some), which plain SGD does not do.
 
+34. **Lyapunov / contraction route (author: "differential equation results like Lyapunov's ... synergize with
+    PAC-Bayes?"; chose the time-uniform information route).** theory.md §16.
+    - Implemented Altschuler & Talwar 2022's explicit privacy-amplification-by-iteration bound (strongly convex,
+      weight decay) inside L-CL-Z Thm 8, plus a contractive trainer: no momentum, no clipping (normalised features
+      give L = 1), projection.
+    - Fashion grid (264 runs): best certificate 0.321, attained at pure composition, vs 0.249 for recipe A.
+      The bound saturates κ only for T ≫ 1/(ηλ). The weight decay needed for fast forgetting caps train error at
+      ≥ 0.33 (λ ≥ 0.01).
+    - Structural reason: forgetting time ≈ optimisation time ≈ 1/(ηλ). The non-convex Doeblin constant is
+      exp(Θ(D²/s²)).
+    - Route closed. The Riemannian / pullback-metric posterior (route 3 of the discussion) remains.
+
 ## Next steps (as of 2026-11-20, updated after entry 32)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
