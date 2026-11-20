@@ -162,3 +162,36 @@ distributions. **Pensia, Jog & Loh (2018)**: MI bounds for noisy iterative algor
 
 Method: KL as published (Dziugaite & Roy), KL/n × n (Pérez-Ortiz), inverted realizable bound with δ = 0.05 assumed
 (Valle-Pérez), model size in bits (Lotfi). These are lower estimates of the prior mass (posteriors not optimal).
+
+## Function-space / conditional (supersample) information bounds (read 2026-11-20, full text)
+
+**Steinke & Zakynthinou (2020) setting.**
+- A supersample Z̃ ∈ Z^{n×2}; S ∈ {0,1}^n selects the training half; the bounds compare the training loss with the
+  loss on the *ghost* half.
+
+**Harutyunyan, Raginsky, Ver Steeg & Galstyan (2021), NeurIPS. arXiv:2110.01584.**
+- f-CMI = I(f(Z̃_S, X̃, R); S | Z̃): information in the *predictions* on all 2n inputs.
+- Samplewise version (their Cor. 2): |E gen| ≤ (1/n) Σᵢ E √(2·I(f(z̃_S, x̃ᵢ, R); Sᵢ)). The information is between a
+  pair of predictions and one bit, so it is easy to estimate.
+- *Expected* bound only, with a square-gap version (Markov for tails).
+- Estimated by retraining over many (z̃, S) draws. Close to the true gap for a CNN on MNIST 4 vs 9 and a ResNet-50
+  fine-tuned on CIFAR-10 (bound about 3× the gap).
+- **Fixed-seed (deterministic) training has f-CMI ≈ random-seed f-CMI** (their App. B, Fig. 3b), whereas weight-based
+  I(W;S) is infinite or trivial.
+- Remark 1: predictions on both halves are needed (test-only or train-only predictions fail).
+
+**Hellström & Durisi (2022), NeurIPS. arXiv:2210.06422.**
+- e-CMI (information in the *losses*), jointly-convex-function family, samplewise binary-kl bound.
+- Thm 7 (high probability over Z̃, S): bounds the *ghost-half* loss by
+  D(P_{λ|Z̃S} ‖ P_{λ|Z̃}) + log(√n/δ), with λ the full loss matrix.
+- Notes that samplewise tail bounds are loose: linear in 1/δ.
+
+**Hellström & Durisi (2020), IEEE JSAIT. arXiv:2005.08044.**
+- Single-draw (disintegrated) bounds via the information density ı(W,Z), and its conditional version.
+- Tails via Markov on ı, via central moments M_t of ı, or via Rényi / maximal leakage. Same structure as our §14.
+
+**Wang & Mao (2023), ICML. arXiv:2302.02432.**
+- Loss-difference CMI: project the loss pair to one number; Rademacher-correlated MI bounds; the tightest supersample
+  bounds; exact in the interpolating regime.
+- Expected bounds only.
+

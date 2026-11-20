@@ -441,3 +441,42 @@ selection. Open issues for a *certificate*:
 - those bounds are in expectation;
 - their estimation needs supersample (ghost) data and many retrainings.
 
+### 15.3 Can function-space information certify a deterministic network without held-out data? [ours]
+
+**(a) Supersample (CMI) bounds are not certificates.** Every CMI / f-CMI / e-CMI / ld-CMI bound controls the loss on
+the *ghost half* of a supersample.
+- If the ghost half exists as real labelled data, its loss can be computed directly. A held-out kl bound on those n
+  points is then tighter than any CMI bound.
+- So these bounds are explanatory: they hold in expectation, and their estimates require many retrainings on
+  supersamples, i.e. extra data.
+- Their one technical advantage is real, though. The information terms are between *finite-alphabet* variables
+  (predictions or losses on a pair, and a bit). Unlike KL between implicit distributions over weights, they admit
+  *upper* confidence bounds from retraining samples.
+
+**(b) Single-network certificates without held-out data need a tail bound on ı(S; f) with the oracle prior (§14).**
+- f is defined only implicitly (chaotic SGD over seeds). No finite-sample procedure upper-bounds the KL between
+  implicitly defined distributions over an infinite space: samples can only lower-bound a divergence.
+- So a certificate needs an *explicit, analysable* noise or coding mechanism: DP / Gaussian noise (§14), compression,
+  or a Gaussian posterior. Hellström & Durisi's samplewise tails are also linear in 1/δ, the same Markov obstacle as
+  in §14.
+
+**(c) Where the author's chaos intuition can enter.**
+- *As explanation (well-founded, measurable).* Chaos turns a fixed-seed algorithm into a pseudo-random one. The region
+  reached is selected largely by internally generated noise, which masks sample-specific signal. Evidence:
+  - §15.2: 84% of cross-dataset prediction disagreement is reproduced by batch order alone.
+  - Harutyunyan et al.: f-CMI with a fixed seed ≈ f-CMI with a random seed.
+
+  Chaos alone does not imply low information: with random labels the sample-specific signal (memorisation) is large,
+  and f-CMI is large despite chaos. The claim is quantitative, *noise > signal in function space*, like DP but with
+  self-generated noise.
+- *In a certificate, only through a provable property.* For explicit-noise training (DP-SGD), our accounting charges
+  every step: composition, no forgetting. If the noisy dynamics *mix*, the law of W_T forgets early data steps and the
+  information saturates ("hidden state" / amplification by iteration; Feldman et al. 2018, Altschuler & Talwar 2022,
+  Chourasia et al. 2021, Ye & Shokri 2022). Trajectory divergence (chaos) does not imply contraction of *laws*. Proofs
+  need contractivity (convex), an LSI, or a Doeblin minorisation, none of which is certifiable for a deep net at
+  useful noise levels.
+
+**Verdict.** No certificate for a deterministic network without held-out data follows from these papers. The chaos
+hypothesis is best pursued as an *explanatory* result, measured with finite-alphabet function-space information:
+fixed vs random seed, chaos suppressed (small lr / large batch / float64 determinism) vs not, true vs random labels.
+

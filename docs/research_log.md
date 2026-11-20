@@ -194,7 +194,19 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     - Conclusion: SGD noise acts in function space. The matching literature is f-CMI (Harutyunyan et al. 2021),
       e-CMI (Hellström & Durisi) and disagreement-based estimators (Jiang et al. 2022).
 
-## Next steps (as of 2026-11-20, updated after entry 31)
+32. **Read the f-CMI / e-CMI / single-draw / ld-CMI papers (author: "see if a certificate is possible ... use the
+    chaotic nature of training to our advantage").** Verdict (theory.md §15.3):
+    - Supersample bounds certify the ghost-half loss, which held-out evaluation already gives better. They are
+      explanatory, not certificates.
+    - Single-network certificates need an upper bound on an implicitly defined information (ı(S; f)), which samples
+      cannot provide.
+    - Chaos can enter a certificate only via provable mixing of an explicit-noise process (open, likely impractical).
+    - Chaos is a strong *explanatory* lever: self-generated noise masking sample-specific signal in function space,
+      measurable with finite-alphabet information.
+    - Proposed experiment: f-CMI / ld-CMI on Fashion MLP for fixed vs random seed, chaotic vs chaos-suppressed training,
+      true vs random labels.
+
+## Next steps (as of 2026-11-20, updated after entry 32)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
    García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior
