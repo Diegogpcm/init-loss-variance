@@ -165,7 +165,25 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
       inclusion: no; DP is worst case over them, and it is worth about 9–15% extra variance in the signal directions,
       ≈ 0.002. Others' data values: not credited.
 
-## Next steps (as of 2026-11-20, updated after entry 29)
+30. **Scattering features (author: "try the scattering features on fashion, but i think that deviates too much from standard
+    deep learning ... we would ideally be looking to explain why deep learning generalizes").**
+    - Added second-order scattering (81 channels).
+    - Recipe S was chosen on Fashion (27 runs) and transferred unchanged: MNIST **0.0695 ± 0.005** (test 4.1%; was
+      0.084), CIFAR-10 0.716 (no change; test 0.660), Fashion 0.241.
+    - Strategic agreement with the author: the DP/MI route explains generalization of noisy, information-starved
+      training of fixed-feature models, not of standard deep nets. Plain SGD has I(S;W) = ∞ for continuous weights,
+      and the same networks fit random labels.
+    - Proposed main line: a **two-phase hybrid on standard architectures**.
+      1. A noisy-SGD phase, charged by the Thm 8 κ (amplified, about 185–340 nats), gives a data-dependent prior mean
+         with no held-out split.
+      2. Ordinary training continues; a Gaussian posterior on the final standard network is charged by KL to that
+         prior, using our pipeline (BN statistics as parameters, inv KL, klinv01).
+      This is L-CL-Z's Table 3 structure, with κ ≈ 185 against their 1,224, plus our KL improvements. It certifies a
+      standard network at near-standard accuracy and splits generalization into "cheap noisy learning" plus
+      "flatness of fine-tuning".
+    - The best-certificate track (small models, fixed features) is now secondary.
+
+## Next steps (as of 2026-11-20, updated after entry 30)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
    García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior

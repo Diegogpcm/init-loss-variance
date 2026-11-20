@@ -44,7 +44,7 @@ def renyi2_step(q, sigma):
     return math.log1p(q * q * math.expm1(1 / sigma ** 2))
 
 
-def gabor_features(X):
+def gabor_features(X, second_order=False):
     """Data-free first-order scattering-like features (cf. Tramer & Boneh 2021): |X * gabor| for 2 scales x 8
     orientations, 4x4 average pooling, plus a pooled low-pass image; then per-example standardization.
     Grayscale 28x28 (MNIST/Fashion) or RGB 3x32x32 (CIFAR-10, channel-first rows); filters applied per channel."""
@@ -67,7 +67,13 @@ def gabor_features(X):
     for i in range(0, len(imgs), 5000):
         z = torch.nn.functional.conv2d(imgs[i:i + 5000], K, padding=5)
         mod = torch.sqrt(z[:, 0::2] ** 2 + z[:, 1::2] ** 2 + 1e-8)
-        f = torch.cat([torch.nn.functional.avg_pool2d(mod, 4), torch.nn.functional.avg_pool2d(imgs[i:i + 5000], 4)], 1)
+        parts = [torch.nn.functional.avg_pool2d(mod, 4), torch.nn.functional.avg_pool2d(imgs[i:i + 5000], 4)]
+        if second_order:   # |(|x * psi_{j1}|) * psi_{j2}|, j2 > j1: fine-scale modulus maps through the coarse filters
+            fine = mod[:, :8].reshape(-1, 1, side, side)                       # 8 orientations at sigma = 1.5
+            z2 = torch.nn.functional.conv2d(fine, K[16:], padding=5)          # 8 coarse (sigma = 3) complex filters
+            m2 = torch.sqrt(z2[:, 0::2] ** 2 + z2[:, 1::2] ** 2 + 1e-8).reshape(len(mod), 64, side, side)
+            parts.append(torch.nn.functional.avg_pool2d(m2, 4))
+        f = torch.cat(parts, 1)
         feats.append(f.flatten(1))
     F = torch.cat(feats).reshape(len(X), -1)          # regroup the channels of each image
     return (F - F.mean(1, keepdim=True)) / F.std(1, keepdim=True)
@@ -80,8 +86,9 @@ def run(cfg):
     t0 = time.time()
     Xtr, ytr, _, Xte, yte = load(cfg["data"])
     Xtr, Xte = Xtr.float(), Xte.float()
-    if cfg["features"] == "gabor":            # cfg["data"] must then hold raw [0,1] pixels (lv_fashion_raw.npz)
-        Xtr, Xte = gabor_features(Xtr), gabor_features(Xte)
+    if cfg["features"] in ("gabor", "scatter2"):   # cfg["data"] must then hold raw [0,1] pixels (lv_*_raw.npz)
+        so = cfg["features"] == "scatter2"         # 81 channels = 1 low-pass + 16 first-order + 64 second-order
+        Xtr, Xte = gabor_features(Xtr, so), gabor_features(Xte, so)
     norm, depth, width, B, nu, epochs, lr, C = (cfg[k] for k in ("norm", "depth", "width", "batch", "nu", "epochs",
                                                                     "lr", "clip"))
     n, K = len(Xtr), int(ytr.max()) + 1
@@ -260,7 +267,7 @@ def main():
     ap.add_argument("--norms", default="ln,none")
     ap.add_argument("--widths", default="128")
     ap.add_argument("--depths", default="2")
-    ap.add_argument("--features", default="pixels", choices=["pixels", "gabor"])
+    ap.add_argument("--features", default="pixels", choices=["pixels", "gabor", "scatter2"])
     ap.add_argument("--batches", default="1024,4096")
     ap.add_argument("--nus", default="0.005,0.01,0.02")
     ap.add_argument("--epochs", default="10,30")

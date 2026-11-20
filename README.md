@@ -296,6 +296,7 @@ reusing the data across epochs cheap, and it is now part of the certificate.
 | Fashion-MNIST, best Gaussian PAC-Bayes (bn_stat + inv KL + klinv01) | 0.347 ± 0.001 |
 | Fashion-MNIST, DP-SGD, linear on data-free Gabor features (3 seeds): tail by L-CL-Z Thm 8 / by Markov | **0.249 ± 0.003** / 0.273 ± 0.003 (test 0.210) |
 | MNIST, same recipe transferred unchanged (3 seeds): Thm 8 / Markov | **0.084 ± 0.005** / 0.099 ± 0.004 (test 0.058) |
+| MNIST, second-order scattering features (recipe S, chosen on Fashion), Thm 8 | **0.0695 ± 0.005** (test 0.041) |
 | MNIST, our Gaussian PAC-Bayes pipeline (bn_stat MLP) / Pérez-Ortiz-style f_quad baseline | 0.228 / 0.349 |
 | CIFAR-10, same recipe unchanged (3 seeds): Thm 8 / Markov | **0.715 ± 0.006** / 0.740 ± 0.005 (test 0.675) |
 | CIFAR-10, published: García-Pérez 2025 best data-free CNN; L-CL-Z 2026 v2 best (DP-SGD prior + posterior, 4-layer CNN) | 0.738 ± 0.007; 0.716 ± 0.007 |

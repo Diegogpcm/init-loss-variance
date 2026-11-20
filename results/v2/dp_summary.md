@@ -101,3 +101,16 @@ Ceiling at fixed hyperparameters (MNIST A, seed-mean train error):
 | 2I + 2√(2IL) | 43 | 0.073 |
 | I + 2√(IL) | 26 | 0.071 |
 | E[ı], not a certificate | 12 | 0.069 |
+
+## Second-order scattering features (recipe S, 2026-11-20)
+
+Features: `--features scatter2`, i.e. 81 channels (1 low-pass, 16 first-order, 64 second-order |·*ψ_coarse| maps),
+4×4 pooled. Recipe S was selected on Fashion from 27 runs (ν ∈ {.005, .01, .02} × epochs {5, 10, 20} × lr {.1, .3, 1}):
+linear softmax, B = 4096, ν = 0.01, 20 epochs, lr 0.1, cosine schedule. I_ub = 24.5, κ_LZ8 = 341. It was then
+transferred unchanged.
+
+| dataset | seeds | cert (Thm 8) | train | test | recipe A (Gabor) |
+|---|---|---|---|---|---|
+| Fashion (selection set) | 3 | 0.241 ± 0.001 | 0.194 | 0.193 | 0.249 |
+| MNIST (transfer) | 3 | **0.0695 ± 0.0046** | 0.044 | 0.041 | 0.0836 |
+| CIFAR-10 (transfer) | 3 | 0.716 ± 0.004 | 0.661 | 0.660 | 0.715 |
