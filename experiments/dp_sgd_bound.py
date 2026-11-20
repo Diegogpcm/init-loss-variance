@@ -102,6 +102,9 @@ def run(cfg):
             return sum(int((forward(th, X[i:i + bs], norm, depth).argmax(1) != y[i:i + bs]).sum())
                        for i in range(0, len(X), bs)) / len(X)
 
+    diag = None
+    if cfg.get("diag_m"):   # gradient-diversity diagnostic (theory.md s14.2); uses held-out test points, not a certificate input
+        diag = GradDiversity(pgrad, Xte[:cfg["diag_m"]], yte[:cfg["diag_m"]], C, B, sigma)
     mom = {k: torch.zeros_like(v) for k, v in th.items()}
     avg, n_avg = {k: torch.zeros_like(v) for k, v in th.items()}, 0   # tail average of iterates (post-processing)
     clipped_frac = []
@@ -121,6 +124,8 @@ def run(cfg):
             G[k] += sigma * C * torch.randn(G[k].shape, generator=gen)
             mom[k] = 0.9 * mom[k] + G[k] / B
             th[k] = th[k] - lr_t * mom[k]
+        if diag is not None:
+            diag.step(th, t)
         if t >= T // 2:
             n_avg += 1
             for k in th:
@@ -146,7 +151,50 @@ def run(cfg):
     # high-probability tail of the information density with amplification: Lampert-Cairney-Leeming-Zakerinia
     # (arXiv:2605.26222v2) Thm 8 on replace-one RDP (experiments/tail_bounds.py); one tail event covers both iterates
     from rescore_tail import rescore
+    if diag is not None:
+        res["diag"] = diag.summary()
     return rescore(res)
+
+
+class GradDiversity:
+    """Spectrum of the stacked (over all T steps) population covariance of clipped per-example gradients, estimated on m
+    held-out points, optionally weighted by the per-step noise covariance Sigma_w = sigma^2 I + B E[h h^T]
+    (Gaussian + Poisson-subsampling noise of the other examples). Nonzero eigenvalues via m x m Gram matrices:
+      K   = sum_t H_t^T H_t                              (H_t = centred gradients, P x m)
+      K_w = sum_t H_t^T H_t + B/(sigma^2 m) (H_t^T G_t)(G_t^T H_t)   (G_t = uncentred)
+    """
+
+    def __init__(self, pgrad, X, y, C, B, sigma):
+        import torch
+        self.pgrad, self.X, self.y, self.C, self.B, self.sigma = pgrad, X, y, C, B, sigma
+        m = len(X)
+        self.K = torch.zeros(m, m, dtype=torch.float64)
+        self.Kw = torch.zeros(m, m, dtype=torch.float64)
+
+    def step(self, th, t):
+        import torch
+        G = []
+        for i in range(0, len(self.X), 500):
+            g = self.pgrad(th, self.X[i:i + 500], self.y[i:i + 500])
+            flat = torch.cat([v.reshape(v.shape[0], -1) for v in g.values()], 1)
+            nrm = flat.norm(dim=1, keepdim=True)
+            G.append(flat * torch.clamp(self.C / (nrm + 1e-12), max=1.0))
+        G = torch.cat(G).double()                       # m x P (rows = examples)
+        H = G - G.mean(0, keepdim=True)
+        HH = H @ H.T
+        HG = H @ G.T
+        self.K += HH
+        self.Kw += HH + self.B / (self.sigma ** 2 * len(G)) * (HG @ HG.T)
+
+    def summary(self):
+        import torch
+        out = {}
+        for name, K in (("C", self.K), ("A", self.Kw)):
+            ev = torch.linalg.eigvalsh(K / K.shape[0]).clamp(min=0).flip(0)
+            tr = float(ev.sum())
+            out[name] = dict(trace=tr, op_over_tr=float(ev[0]) / tr, fro_over_tr=float(ev.norm()) / tr,
+                             eff_rank=tr ** 2 / float((ev ** 2).sum()), top=[float(e) / tr for e in ev[:20]])
+        return out
 
 
 def safe_run(cfg):
@@ -174,10 +222,11 @@ def main():
     ap.add_argument("--chunk", type=int, default=1024)
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--threads", type=int, default=2)
+    ap.add_argument("--diag_m", type=int, default=0, help="gradient-diversity diagnostic on this many test points")
     a = ap.parse_args()
     L = lambda x, f: [f(v) for v in x.split(",")]
     cfgs = [dict(data=a.data, features=a.features, depth=dp, norm=nm, width=w, batch=B, nu=nu, epochs=e, lr=lr, clip=a.clip, sched=a.sched, seed=s,
-                 chunk=a.chunk, threads=a.threads)
+                 chunk=a.chunk, threads=a.threads, diag_m=a.diag_m)
             for dp in L(a.depths, int) for nm in L(a.norms, str) for w in L(a.widths, int) for B in L(a.batches, int) for nu in L(a.nus, float)
             for e in L(a.epochs, int) for lr in L(a.lrs, float) for s in L(a.seeds, int)]
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
@@ -191,6 +240,8 @@ def main():
                   f"{r['train_avg']:.4f} test {r['test_avg']:.4f} best-of-2 cert {r['cert01_best2']:.4f} | I<= {r['I_ub']:.1f} "
                   f"nats | cert {r['cert01']:.4f} (no-Markov {r['exp_cert01']:.4f}) | clipped {r['clipped_frac']:.2f} "
                   f"[{r['seconds']:.0f}s]", flush=True)
+            if "diag" in r:
+                print("  diag:", {k: {kk: (round(vv, 4) if isinstance(vv, float) else [round(x, 4) for x in vv[:5]]) for kk, vv in v.items()} for k, v in r["diag"].items()}, flush=True)
 
 
 if __name__ == "__main__":

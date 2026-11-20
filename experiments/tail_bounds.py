@@ -154,3 +154,25 @@ if __name__ == "__main__":
     for k, v in out.items():
         print(f"{k:10s} kappa={v:9.1f}  kl-budget={(v + pb) / n:.5f}  cert={kl_inv(a.train01, (v + pb) / n):.4f}")
     print(f"no-Markov  kappa={a.I:9.1f}  cert={kl_inv(a.train01, (a.I + pb) / n):.4f}  (not a certificate)")
+
+
+def struct_kappa_heuristic(n, eps_fn, beta, alphas, fro_over_tr, op_over_tr, b1_fracs=np.linspace(0.05, 0.95, 19)):
+    """NOT A THEOREM (theory.md s14.2). Thm 8 with the Markov step on (1/n) sum_i (J_i - 1) replaced by a Gaussian-chaos
+    (Hanson-Wright / Laurent-Massart) bound on ln J(Y) = c * w^T A w:
+        ln J <= (alpha-1) eps * K,   K = 1 + 2 sqrt(L1) ||A||_F/tr A + 2 L1 ||A||_op/tr A,   L1 = ln(1/beta1),
+    using J_i ~ J(Y) for all i (i.i.d. examples) and c E[w^T A w] <= ln E e^{c w^T A w} <= (alpha-1) eps."""
+    best = (math.inf, None)
+    for a in alphas:
+        e = eps_fn(a)
+        for f in b1_fracs:
+            b1, b2 = f * beta, (1 - f) * beta
+            L1 = math.log(1 / b1)
+            K = 1 + 2 * math.sqrt(L1) * fro_over_tr + 2 * L1 * op_over_tr
+            x = (a - 1) * e * K
+            ps = psi(math.expm1(x)) if x < 600 else (math.log(2) + 0.5 * x) ** 2
+            vs = n / (2 * (a - 1) ** 2) * ps
+            L2 = math.log(1 / b2)
+            k = vs + 2 * math.sqrt(vs * L2) + L2 / (a - 1)
+            if k < best[0]:
+                best = (k, dict(alpha=a, beta1=b1, K=K, v_star=vs))
+    return best

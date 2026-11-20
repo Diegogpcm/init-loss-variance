@@ -140,9 +140,24 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
       Converting RDP → (ε,δ) → the Rogers et al. max-information is worse than Markov at these parameters, because of
       the per-example ln(1/δ_DP).
 
-## Next steps (as of 2026-11-20, updated after entry 27)
-0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); the structured multi-epoch tail (posterior correlations) is open,
-   worth about 0.01–0.02; (b) CIFAR-10 with data-free features (ScatterNet) against
+28. **Structured multi-epoch tail (author: "try the structured multi-epoch tail bound").** Reduction (theory.md §14.2): Thm 8
+    loses only through Markov on Σᵢ(J_i − 1). The J_i are essentially equal across i.i.d. examples, so concentration
+    must come from Y. To first order, ln J(Y) is a Gaussian chaos c·wᵀAw, with A the noise-weighted population gradient
+    covariance stacked over steps.
+    - Heuristic bound (Hanson–Wright in place of Markov) in `struct_kappa_heuristic`.
+    - Measured A on our trajectories (`--diag_m 1500`, test points): effective rank 9–21, op/tr 0.10–0.23, because
+      per-example gradient directions persist across steps.
+    - Even if the three missing lemmas (chaos representation, predictable Hanson–Wright, certified diversity) were
+      proven, certificates would improve by only 0.002–0.008.
+    - Decision: do not pursue.
+    - The diagnostic shows a bigger slack in worst-case sensitivity: centred gradient variance trC/T = 0.37–0.78
+      against the worst case's antipodal |h − h′|² = 4. Next lever: individual privacy accounting (Feldman & Zrnic 2021
+      Rényi filters), which allows more steps at the same ε.
+
+## Next steps (as of 2026-11-20, updated after entry 28)
+0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
+   ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: more steps at the same
+   ε, untested; (b) CIFAR-10 with data-free features (ScatterNet) against
    García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior
    centred by MI + small posterior KL (Lampert & Zakerinia's structure, with our amplified MI); (d) verify the published
    MNIST numbers we compare against (Pérez-Ortiz FCN, García-Pérez MNIST) from the papers.

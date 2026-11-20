@@ -323,6 +323,54 @@ against the non-certificate E[ı] ≈ 12. Asymptotically κ_LZ8 ≈ 2·I_ub·ln(
   the not-a-certificate E[ı] plug-in gives 0.069. Fashion: 0.246 → 0.230 / 0.227 / 0.224. CIFAR-10: 0.715 → 0.696 / 0.693 / 0.689.
   The Markov → Thm 8 step captured about 60% of the gap between the Markov certificate and E[ı].
 
+### 14.2 A structured tail for multi-epoch Poisson DP-SGD: reduction, heuristic, measured value [ours; not a theorem]
+
+**Reduction.** Thm 8 loses only at the Markov step on (1/n)Σᵢ(J_i − 1). The examples are i.i.d. from μ, so
+J_i ≈ J(Y) for every i, and the n terms are essentially perfectly correlated. Concentration can only come from Y,
+i.e. from the T fresh noise vectors.
+
+**First-order structure.** The posterior log-tilt of a generic example is s(z) ≈ Σₜ (q/σ²)⟨wₜ, hₜ(z) − h̄ₜ⟩. Here wₜ
+is the residual noise: Gaussian noise plus the Poisson noise of the other examples, with covariance
+Σ_w = σ²I + B·E[hhᵀ]. So ln J(Y) ≈ c·wᵀAw. A ∝ Σ_w^{1/2} C Σ_w^{1/2}, where C is the covariance of the gradients
+stacked over all T steps, under the *population* at the realised trajectory.
+
+**Heuristic bound.** Replace Markov by Hanson–Wright / Laurent–Massart for this chaos:
+- c·wᵀAw ≤ (α−1)ε·K, with K = 1 + 2√L₁·‖A‖_F/trA + 2L₁·‖A‖_op/trA, and the rest of Thm 8 unchanged.
+- Implemented as `tail_bounds.struct_kappa_heuristic`.
+- It beats Thm 8 only if ‖A‖_op/trA ≲ 0.25. Even at full diversity it gives κ ≈ 53 (MNIST about 0.074), because the
+  replace-one factor and ψ remain.
+- In the aligned worst case, K ≈ 1 + 2√L + 2L ≈ 13, which is worse than Thm 8.
+
+**What a proof would need:**
+- **S1. A rigorous chaos representation of ln J (the hard part).** It must handle the Poisson mixtures, the
+  marginalised suffix and the conditioned prefix, uniformly over the tails.
+- **S2. Hanson–Wright with predictable blocks.** The noise is fresh at each step, so a tower/MGF argument should work.
+- **S3. Certifying the diversity ratios.** A is a population quantity at a data-dependent trajectory. Options: a
+  training-set estimate transferred through the Thm 8 tail, P_joint[E] ≤ e^κ·P_prod[E] + β; or simply the worst case.
+
+**Measured value** (`dp_sgd_bound.py --diag_m 1500`, recipe A, seed 0, spectrum of A estimated on 1,500 test points
+at every step; `results/v2/dp_diag_*.jsonl`):
+
+| | eff. rank | ‖A‖_op/trA | ‖A‖_F/trA | trC/T | Thm 8 | structured (heuristic) |
+|---|---|---|---|---|---|---|
+| MNIST | 17.7 | 0.135 | 0.238 | 0.37 | 0.0874 | 0.0837 |
+| Fashion | 9.3 | 0.232 | 0.328 | 0.49 | 0.2482 | 0.2467 |
+| CIFAR-10 | 20.8 | 0.100 | 0.219 | 0.78 | 0.722 | 0.714 |
+
+The effective rank is about the number of classes, not T·rank. Each example's gradient direction persists across
+steps, so the steps do not add independent directions.
+
+**Verdict:** even if S1–S3 were proven, the gain at these hyperparameters is 0.002–0.008. Not worth pursuing.
+
+**The larger remaining slack is worst-case sensitivity.** The accountant assumes every clipped gradient has norm C and
+that the worst pair is antipodal, i.e. E|h − h′|² ≤ 4. The measured centred variance is trC/T ≈ 0.37–0.78 per step,
+so an average pair has 2·trC/T ≈ 0.7–1.6.
+- Plain DP cannot exploit this, because it is worst case by definition.
+- Individual privacy accounting (Feldman & Zrnic 2021, Rényi filters) charges each example by its realised gradient
+  norms and stops it at a fixed budget. That keeps the same replace-one ε, but allows *more steps* for the same
+  certificate. It is the next lever to test, since training error still falls with epochs (Fashion ν = 0.01:
+  0.214 → 0.200 from 10 to 20 epochs).
+
 **Selection.** Hyperparameter selection over K configurations on the same S costs δ₁/K (linear) on this route. Protocol
 used: choose recipes on Fashion-MNIST, then apply them *unchanged* to MNIST (pre-registered transfer, no selection on
 MNIST), and re-seed on Fashion.

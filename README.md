@@ -306,8 +306,9 @@ reusing the data across epochs cheap, and it is now part of the certificate.
   the tail of the information density (κ = 185 nats with Thm 8 against E[ı] ≤ 12; the not-a-certificate plug-in E[ı]
   gives 0.224 on Fashion and 0.069 on MNIST) plus training error under noise.
 - Remaining lever (theory.md §14.1): Thm 8 still pays ≈ ln(4/β₁) for the realised posterior divergences, plus a factor
-  ≈ 2 for replace-one. Structured (Gaussian, step-wise) tail bounds as in L-CL-Z's streaming Thm 4 would reach about
-  0.073 on MNIST, but multi-epoch reuse needs posterior-correlation control (open).
+  ≈ 2 for replace-one. A structured Gaussian-chaos tail (theory.md §14.2) is worth ≤ 0.008 at the measured gradient
+  diversity (effective rank 9–21), so it was dropped. The bigger slack is worst-case sensitivity: centred gradient
+  variance is 0.37–0.78 of the antipodal worst case's scale, and individual Rényi-filter accounting is next.
 
 ## Next steps (proposed)
 
