@@ -304,13 +304,16 @@ Rounds on Fashion (selection, ~120 runs):
 Pre-registered transfer (recipes A and B fixed from round 3, applied unchanged; 3 seeds):
 - **MNIST recipe A: 0.099 ± 0.004** (train 0.062, test 0.058, I = 12.2). Recipe B: 0.116 ± 0.003.
 - Fashion recipe A: 0.273 ± 0.003 (seed 0 from the selection grid).
+- **CIFAR-10 recipe A: 0.740 ± 0.005** (test 0.675; Gabor map per RGB channel), recipe B 0.761 ± 0.006. Ties the best
+  published data-free certificate (García-Pérez et al. 2025, 4-layer CNN, 0.738 ± 0.007); Lampert & Zakerinia 0.84.
 - MNIST, Gaussian PAC-Bayes pipeline (width 64, σ₀ 0.05, block estimator): bn_stat + inv + klinv01 0.228 ± 0.002
   (Gibbs test 0.067, KL 5,400); plain + inv + klinv01 0.267 ± 0.004; Pérez-Ortiz-style plain + f_quad 0.349 ± 0.021.
 
 Findings:
 - **The MI route beats every data-free Gaussian PAC-Bayes certificate we have** (Fashion 0.273 vs 0.347) and, on MNIST,
   the published data-free certificates we know (Lotfi et al. 0.116, Pérez-Ortiz CNN 0.2165, Lampert & Zakerinia 0.29),
-  for a *deterministic* network rather than a Gibbs predictor. The model is weak (5.8% MNIST test error).
+  for a *deterministic* network rather than a Gibbs predictor. The model is weak (5.8% MNIST test error). On MNIST,
+  our Gaussian pipeline (0.228) also beats García-Pérez et al.'s best MLP certificate (0.315, 3×600 MLP).
 - The regime is extreme privacy: I ≈ 12 nats for 60k examples. The certificate is limited by (i) the Markov factor
   1/δ₁ = 42 (no-Markov value 0.069 on MNIST) and (ii) training error under heavy noise (noise norm ∝ √d, hence small
   models and good data-free features win).

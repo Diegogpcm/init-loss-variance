@@ -296,7 +296,8 @@ reusing the data across epochs cheap, and it is now part of the certificate.
 | Fashion-MNIST, DP-SGD + MI, linear on data-free Gabor features (3 seeds) | **0.273 ± 0.003** (test 0.210) |
 | MNIST, same recipe transferred unchanged (3 seeds) | **0.099 ± 0.004** (test 0.058) |
 | MNIST, our Gaussian PAC-Bayes pipeline (bn_stat MLP) / Pérez-Ortiz-style f_quad baseline | 0.228 / 0.349 |
-| MNIST, published: Pérez-Ortiz 2021 (CNN), Lampert & Zakerinia 2026 (DP-SGD prior), Lotfi 2022 (compression) | 0.2165 / 0.29 / 0.116 |
+| CIFAR-10, same recipe unchanged (3 seeds) / García-Pérez 2025 best data-free CNN | 0.740 ± 0.005 / 0.738 ± 0.007 |
+| MNIST, published: García-Pérez 2025 (MLP 3×600), Pérez-Ortiz 2021 (CNN), Lampert & Zakerinia 2026 (DP-SGD prior), Lotfi 2022 (compression) | 0.315 / 0.2165 / 0.29 / 0.116 |
 
 - The optimum is a very noisy, short run (I ≈ 6–25 nats, i.e. ~10⁻⁴ nats per example). Small models (linear on
   data-free features) beat MLPs, as in DP practice (Tramèr & Boneh 2021). The generalization gap is ≈ 0; the slack is

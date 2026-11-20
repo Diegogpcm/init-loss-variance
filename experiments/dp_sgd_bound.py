@@ -46,9 +46,11 @@ def renyi2_step(q, sigma):
 
 def gabor_features(X):
     """Data-free first-order scattering-like features (cf. Tramer & Boneh 2021): |X * gabor| for 2 scales x 8
-    orientations, 4x4 average pooling, plus a pooled low-pass image; then per-example standardization."""
+    orientations, 4x4 average pooling, plus a pooled low-pass image; then per-example standardization.
+    Grayscale 28x28 (MNIST/Fashion) or RGB 3x32x32 (CIFAR-10, channel-first rows); filters applied per channel."""
     import torch
-    imgs = X.reshape(-1, 1, 28, 28)
+    ch, side = (1, 28) if X.shape[1] == 784 else (3, 32)
+    imgs = X.reshape(-1, ch, side, side).reshape(-1, 1, side, side)
     r = torch.arange(-5, 6, dtype=torch.float32)
     yy, xx = torch.meshgrid(r, r, indexing="ij")
     ks = []
@@ -67,7 +69,7 @@ def gabor_features(X):
         mod = torch.sqrt(z[:, 0::2] ** 2 + z[:, 1::2] ** 2 + 1e-8)
         f = torch.cat([torch.nn.functional.avg_pool2d(mod, 4), torch.nn.functional.avg_pool2d(imgs[i:i + 5000], 4)], 1)
         feats.append(f.flatten(1))
-    F = torch.cat(feats)
+    F = torch.cat(feats).reshape(len(X), -1)          # regroup the channels of each image
     return (F - F.mean(1, keepdim=True)) / F.std(1, keepdim=True)
 
 

@@ -114,6 +114,12 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     MNIST: bn_stat 0.228, plain 0.267, Pérez-Ortiz-style baseline 0.349. Mistake: `pkill -f` again killed its own ssh
     session (pattern matched the ssh command line); use `tmux kill-session` only.
 
+26. **Verified comparison numbers and CIFAR-10.** García-Pérez et al. 2025 (HTML): MNIST best 0.315 (3×600 MLP,
+    KL-modulated), CIFAR-10 best 0.738 ± 0.007 (4-layer CNN). Our Gaussian pipeline on MNIST (bn_stat + inv + klinv01,
+    width-64 MLP): 0.228 ± 0.002, i.e. "their framework + our changes" improves by 0.09. DP/MI recipe A transferred
+    unchanged to CIFAR-10: 0.740 ± 0.005 (tie). CIFAR download: Toronto mirror stalled; used the Hugging Face parquet
+    (uoft-cs/cifar10), converted to channel-first rows in /tmp/lv_cifar10_raw.npz.
+
 ## Next steps (as of 2026-11-20)
 0. DP/MI route: (a) high-probability tail for the information density with amplification (removes the 1/δ₁ = 42
    factor; worth ~0.03 on MNIST, ~0.05 on Fashion); (b) CIFAR-10 with data-free features (ScatterNet) against

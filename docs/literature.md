@@ -69,6 +69,9 @@ objective derived from it, KL-modulation (η possibly > 1), method to optimize b
 Data-free priors only (data-dependent priors excluded on purpose); first non-vacuous CIFAR-10 PAC-Bayes certificates
 for NNs (4–5 layer CNNs). 150,000 MC samples. Observes the bound's variance is much smaller than the prior loss's
 variance ("good minima spread throughout parameter space; KL restricts the search"). **No localization.**
+Numbers (verified 2026-11-20 from the HTML version): MNIST, MLP 3×600, δ = 0.025, 150k MC samples, σ₀ ∈ [0.02, 0.08]:
+CE-trained f_rts 0.335 (Gibbs test 0.163); 0-1 objectives f̃_mb 0.325 ± 0.006; KL-modulated **0.315** (best).
+CIFAR-10, 4-layer CNN (9,946 params) f̃_mb **0.738 ± 0.007**; 4-layer 315k params 0.758; 5-layer 0.756.
 
 **Lotfi, Finzi, Kapoor, Potapczynski, Goldblum, Wilson (2022). PAC-Bayes compression bounds so tight that they can
 explain generalization. arXiv:2211.13609.** Data-independent prior over compressed descriptions (random subspace

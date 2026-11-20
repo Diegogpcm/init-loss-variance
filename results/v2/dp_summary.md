@@ -13,6 +13,7 @@ of the clip C = 1); T = number of steps. "no-Markov" plugs E[ı] in place of its
 | ours: Gaussian PAC-Bayes, bn_stat + inv KL + klinv01 (3 seeds) | MLP 784-64-64-10, BN stats as parameters | Gibbs (stochastic) | 0.067 ± 0.003 | 0.228 ± 0.002 |
 | ours: same, plain network (inv KL, klinv01) | MLP 784-64-64-10 | Gibbs | 0.080 ± 0.003 | 0.267 ± 0.004 |
 | baseline in our pipeline: Pérez-Ortiz-style (plain KL, f_quad) | MLP 784-64-64-10 | Gibbs | 0.203 ± 0.018 | 0.349 ± 0.021 |
+| García-Pérez et al. 2025, data-free prior, best (KL-modulated, 0-1 objective) | MLP 3×600 | Gibbs | — | 0.315 |
 | Pérez-Ortiz et al. 2021 (JMLR), random-init prior, f_quad | FCN / CNN | Gibbs | — | ≈0.32 / 0.2165 |
 | Lampert & Zakerinia 2026, DP-SGD prior + Gaussian posterior | MLP | Gibbs | — | 0.29 (data-free prior 0.32) |
 | Lotfi et al. 2022, compression prior | compressed model (~380 bytes) | the compressed network | — | 0.116 |
@@ -20,6 +21,18 @@ of the clip C = 1); T = number of steps. "no-Markov" plugs E[ı] in place of its
 
 Published numbers are from docs/literature.md (as reported by the papers; not rerun). Dziugaite & Roy (2017) report
 0.161 on *binary* MNIST (not comparable).
+
+## CIFAR-10 (n = 50,000, standard test set), same recipes transferred unchanged (Gabor map applied per RGB channel)
+
+| method | certified predictor | test error | **certificate** |
+|---|---|---|---|
+| ours: DP-SGD + MI, recipe A (linear on Gabor, 32,650 params), 3 seeds | the trained network | 0.675 ± 0.003 | **0.740 ± 0.005** |
+| ours: recipe B (1-hidden-layer MLP on Gabor), 3 seeds | the trained network | 0.715 ± 0.009 | 0.761 ± 0.006 |
+| García-Pérez et al. 2025, data-free prior, best (4-layer CNN, 9,946 params, f̃_mb) | Gibbs | — | 0.738 ± 0.007 |
+| Lampert & Zakerinia 2026, DP-SGD prior (deep ConvNet) | Gibbs | — | 0.84 |
+
+A tie with the best data-free CNN certificate, from weak first-order features (no tuning on CIFAR). Better data-free
+features (second-order scattering, colour handling) are the obvious lever and would need a pre-registered choice.
 
 ## Fashion-MNIST (n = 55,000), recipes and re-seeding
 
