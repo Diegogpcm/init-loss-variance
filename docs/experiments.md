@@ -18,6 +18,7 @@ Status: **final** (numbers stand), **superseded** (kept for the record; see repl
 | E-r2 | f_quad objective (variational, hybrid); BN × SGD temperature × pull | same | `results/v2/r2a_var_quad.jsonl`, `r2b_*.jsonl`, `r2a_summary.md`, `r2b_summary.md` | final |
 | E-r3 | Exact kl⁻¹ objective vs the García-Pérez accuracy objective (klinv01); hybrid with klinv01 | same, `--objective klinv / klinv01` | `results/v2/r3_*.jsonl` | final (`objectives_summary.md`) |
 | E-online | Trajectory certificates from one SGD pass: progressive validation and online PAC-Bayes (OPBTrain) | `online_bounds.py`, `summarize_online.py` | `results/v2/online_bounds.jsonl`, `online_summary.md` | final |
+| E-dp | Certificate for a DP-SGD-trained network via mutual information (+ Markov); Fashion grid and pre-registered MNIST transfer; Gaussian PAC-Bayes on MNIST | `dp_sgd_bound.py`, `summarize_dp.py`, `run_mnist_transfer.sh`, `pacbayes_norm.py` | `results/v2/dp_sgd_r{1,2,3_*}.jsonl`, `dp_transfer_*.jsonl`, `mnist_pb_*.jsonl`, `dp_summary.md` | final |
 | E-sgd | SGD-noise subspace posterior; lr × batch | `pacbayes_sgd.py`, `summarize_sgd.py` | `results/v2/pacbayes_sgd.jsonl`, `sgd_summary.md`; `pacbayes_sgd_m150.jsonl` superseded | final |
 
 ---
@@ -283,3 +284,37 @@ b·Σ‖Δ_j‖²/2σ²), union bound over σ × λ (13 values). Theory: theory.
   σ = 0.03 → 6.2 nats/example (noisy error 0.17); σ = 0.1 → 0.56 nats/example but noisy error 0.43; σ = 0.3 → error
   0.87. SGD's steps (‖Δ‖ ≈ 0.1 with momentum) are large and poorly aligned, so the per-step KL dominates: **SGD's noise
   makes the trajectory-KL route expensive, not cheap.**
+
+## E-dp: certifying a network trained with noisy SGD (mutual information, theory.md §14)
+
+DP-SGD (per-example clip C = 1, Poisson sampling q = B/n, Gaussian noise ν·B·C on the gradient sum, SGD momentum 0.9);
+certificate kl(train‖risk) ≤ ((I_ub + 1/e)/δ₁ + ln(2√n/δ₂))/n with δ₁ = 0.024, δ₂ = 0.001, I_ub = n·T·KL_step(q, σ)
+computed by quadrature. Data: Fashion (55k, our split) and MNIST (standard 60k/10k). Gabor features: data-free
+first-order scattering-like map (2 scales × 8 orientations, modulus, 4×4 pooling, per-example standardization) on raw
+[0,1] pixels. Tables: `results/v2/dp_summary.md`.
+
+Rounds on Fashion (selection, ~120 runs):
+1. LN/plain MLP 784-128-128-10 on pixels, B ∈ {1024, 4096}, ν ∈ {0.005, 0.01, 0.02}, 10–30 epochs, lr ∈ {0.5, 2}:
+   best 0.335 (B 4096, ν 0.005, 10 epochs; train 0.211, test 0.207, I = 49). Gap ≈ 0; more epochs only add I.
+2. + cosine decay and tail averaging, B up to 16384: best 0.330 (I = 24). **At fixed (T, ν) the batch size is
+   irrelevant** (B 4096 × 5 epochs ≡ B 16384 × 20 epochs to 4 digits) and I = T/(2ν²n) exactly; averaging does not help.
+3. Linear softmax on Gabor features / on pixels, and 1-hidden-layer heads: **best 0.2745** (linear on Gabor, ν 0.01,
+   T = 134, I = 12.2); linear on (standardized) pixels 0.29; MLP on Gabor 0.276.
+
+Pre-registered transfer (recipes A and B fixed from round 3, applied unchanged; 3 seeds):
+- **MNIST recipe A: 0.099 ± 0.004** (train 0.062, test 0.058, I = 12.2). Recipe B: 0.116 ± 0.003.
+- Fashion recipe A: 0.273 ± 0.003 (seed 0 from the selection grid).
+- MNIST, Gaussian PAC-Bayes pipeline (width 64, σ₀ 0.05, block estimator): bn_stat + inv + klinv01 0.228 ± 0.002
+  (Gibbs test 0.067, KL 5,400); plain + inv + klinv01 0.267 ± 0.004; Pérez-Ortiz-style plain + f_quad 0.349 ± 0.021.
+
+Findings:
+- **The MI route beats every data-free Gaussian PAC-Bayes certificate we have** (Fashion 0.273 vs 0.347) and, on MNIST,
+  the published data-free certificates we know (Lotfi et al. 0.116, Pérez-Ortiz CNN 0.2165, Lampert & Zakerinia 0.29),
+  for a *deterministic* network rather than a Gibbs predictor. The model is weak (5.8% MNIST test error).
+- The regime is extreme privacy: I ≈ 12 nats for 60k examples. The certificate is limited by (i) the Markov factor
+  1/δ₁ = 42 (no-Markov value 0.069 on MNIST) and (ii) training error under heavy noise (noise norm ∝ √d, hence small
+  models and good data-free features win).
+- Gaussian PAC-Bayes on MNIST confirms the Fashion ordering: BN statistics as parameters > plain (0.228 vs 0.267), and
+  both ≫ the f_quad / plain-KL baseline (0.349).
+- Caveats: Fashion pixels are standardized with training-set statistics (all earlier runs too; MNIST uses fixed
+  constants, Gabor runs use raw pixels). Fashion recipe numbers carry unpaid selection.

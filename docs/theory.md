@@ -226,3 +226,60 @@ sequence"); posteriors Q_i may depend on all of S; the certified quantity is Σ�
   charged in full. SGD's minibatch noise does not help unless it is part of the prior/posterior (KL ∝ shift²/σ²): the
   quantitative versions of "noise makes data reuse cheap" are differential privacy (Dziugaite & Roy 2018) and
   information-theoretic trajectory bounds (Neu et al. 2021).
+
+## 14. Certifying a multi-epoch network trained with noisy SGD, via mutual information [derived here from standard pieces]
+
+Goal: make "SGD noise makes data reuse cheap" quantitative for a *single, deterministic-at-test-time* network trained for
+many epochs, without a held-out set and without a posterior around it. Algorithm A = DP-SGD (Abadi et al. 2016):
+Poisson sampling with rate q = B/n, per-example clipping to norm C, G_t = Σ_batch clip(g_i) + N(0, σ²C²I), any
+post-processing (momentum) of G_t. Data-free init.
+
+1. **Oracle prior.** P* = marginal law of W_T over S ~ Dⁿ and A's randomness. It is data-free (unknown, but never
+   needs to be evaluated). Q_S = law of W_T given S. Information density ı(W, S) = ln dQ_S/dP*(W), E[ı] = I(S; W_T).
+2. **Disintegrated PAC-Bayes-kl** (change of measure on a single draw; Blanchard & Fleuret 2007, Rivasplata et al.
+   2020): E_S E_{W∼Q_S} e^{n·kl(L̂_S(W)‖L(W)) − ı(W,S)} = E_S E_{W∼P*} e^{n·kl} ≤ 2√n (Maurer), so with probability
+   ≥ 1 − δ₂ over (S, W): kl(L̂_S(W)‖L(W)) ≤ (ı(W,S) + ln(2√n/δ₂))/n. W is *the trained network*; no Gibbs estimation.
+3. **Markov on the information density.** E[e^{−ı}] ≤ 1 and −x ≤ e^{−x−1} give E[ı⁻] ≤ 1/e, so
+   E[ı⁺] ≤ I + 1/e and P[ı > (I + 1/e)/δ₁] ≤ δ₁.
+4. **MI of DP-SGD, with the 1/n per example.** For a product distribution, I(S; Y) = Σᵢ I(zᵢ; Y | z_<ᵢ) ≤
+   Σᵢ I(zᵢ; Y | z_−ᵢ) ≤ Σᵢ E KL(P_{Y|S} ‖ P_{Y|S∖zᵢ}) (the leave-one-out mechanism is a valid reference measure).
+   With Y = (W₀, G₁…G_T), the adaptive chain rule gives a per-step KL of the Poisson-subsampled Gaussian,
+   KL_step(q, σ) = KL((1−q)N(0,σ²) + qN(1,σ²) ‖ N(0,σ²)) (worst case at ‖g‖ = C by data processing:
+   x ↦ (s/C)x + N(0, σ²(1 − s²/C²))). Hence I(S; W_T) ≤ n·T·KL_step ≈ n T q²/(2σ²) = epochs · B / (2σ²) =
+   epochs / (2ν²B), with ν = σ/B the noise std on the *mean* gradient (units of C).
+   Large batches are favoured at fixed ν.
+
+**Certificate** (probability ≥ 1 − δ₁ − δ₂):
+  kl(L̂_S(W) ‖ L(W)) ≤ [ (I_ub + 1/e)/δ₁ + ln(2√n/δ₂) ] / n.
+We use δ₁ = 0.024 and δ₂ = 0.001, since the KL is linear in 1/δ₁ and only logarithmic in 1/δ₂. Comparison with the
+Gaussian-prior certificates: here the "KL" budget is (I + 1/e)/δ₁ ≈ 42·I nats. It must be paid for every epoch, but it
+does not grow with the distance travelled from init or with the parameter count; only the noise-to-batch ratio matters.
+
+Notes.
+- This is the information-theoretic counterpart of Dziugaite & Roy (2018) (DP prior + PAC-Bayes; they need *pure*
+  ε-DP and use max-information, ε²/2 per example). Here only a KL/MI bound is needed, so Gaussian noise suffices with
+  explicit constants.
+- The Markov factor 1/δ₁ is the main loss. Removing it needs tail bounds on ı (e.g. Rényi/Sibson information).
+  The "no-Markov" column in the experiments plugs E[ı] in place of the tail and is *not* a certificate, only the
+  limit of this route.
+- Selection over a hyperparameter grid of K configurations must divide δ₁ by K (linear cost), unlike the ln K of the
+  Gaussian-prior union bounds.
+
+**Comparison with Lampert & Zakerinia (2026).** They bound the β-approximate *max-information* of DP-SGD directly
+(high probability, no Markov), by Jensen against an independent copy S̃ of the whole dataset. That comparison sees the
+full batch change (all m examples differ), so it cannot use subsampling amplification: the leading term is
+n·E/(2σ²) (σ = noise multiplier), versus E·q·n/(2σ²) = epochs·B/(2σ²) for our per-example chain with Poisson
+sampling, a factor q = B/n smaller. In our best Fashion setting (B = 4096, ν = 0.005, 5 epochs) their κ is ≈ 1,300 nats
+and our Markov-inflated budget is (24.4 + 0.37)/0.024 ≈ 1,030 nats: similar, for opposite reasons. In their PAC-Bayes
+use the DP-SGD output is a prior and a Gaussian posterior still pays KL ≈ 5,000.
+
+**Open lever (the main one): a high-probability bound on ı with amplification.** The certificate with E[ı] in place
+of the tail ("no-Markov" column) is 0.05–0.08 tighter than the certificate. A tail bound of the form
+P[ı > I_ub + O(√(I_ub·ln(1/β)))] ≤ β, with the per-example subsampled-Gaussian accounting, would remove most of it.
+The difficulty: the per-example chain ı = Σᵢ ln p(Y|z_≤i)/p(Y|z_<i) has conditional Rényi terms that are controlled by
+RDP only on average over Y, not pointwise (pure DP gives pointwise control; Dwork et al. 2015), and the
+independent-copy route loses the amplification. Lampert & Zakerinia list the Poisson extension as future work.
+
+**Selection.** Hyperparameter selection over K configurations on the same S costs δ₁/K (linear) on this route. Protocol
+used: choose recipes on Fashion-MNIST, then apply them *unchanged* to MNIST (pre-registered transfer, no selection on
+MNIST), and re-seed on Fashion.

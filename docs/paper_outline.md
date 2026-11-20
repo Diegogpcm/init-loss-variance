@@ -2,6 +2,15 @@
 
 Candidate framings, ranked by current evidence. Update as results come in.
 
+## A′. Noise-aware certificates for trained networks (new lead candidate, 2026-11-20)
+
+**Thesis.** SGD's noise, made explicit (DP-SGD), lets a certificate charge data reuse at ~T/(2ν²n) nats instead of
+thousands of nats of parameter-space KL. Certify the trained network itself via MI + disintegrated PAC-Bayes
+(theory.md §14). Headline: MNIST 0.099 ± 0.004 (recipe pre-registered on Fashion), Fashion 0.273 vs 0.347 for the best
+Gaussian PAC-Bayes. Needed: tail bound for ı with amplification (the main technical contribution if it works), CIFAR-10,
+careful comparison with Lampert & Zakerinia (2026), Lotfi et al. (2022), Dziugaite & Roy (2018). Threat: the certified
+models are weak (DP-limited accuracy); reviewers may see it as "DP generalization" rather than PAC-Bayes for deep nets.
+
 ## A. Practice-aware PAC-Bayes certificates for neural networks (lead candidate)
 
 **Thesis.** Data-free PAC-Bayes certificates for neural networks are loose mainly because of the complexity term,

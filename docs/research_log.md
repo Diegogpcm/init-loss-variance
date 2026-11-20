@@ -102,7 +102,26 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     keep later passes valid?": not by itself; later passes are charged in full by the per-example KL; noise must be
     part of the prior/posterior (DP / MI bounds) to make reuse cheap.
 
-## Next steps (as of 2026-11-19 evening)
+## 2026-11-20 (night, autonomous)
+25. **DP-SGD + mutual information (author: "implement it to see what happens"; compare with other papers).** Derived a
+    certificate for the trained network itself (theory.md §14): oracle prior = output marginal, disintegrated
+    PAC-Bayes-kl, Markov on the information density, per-example MI chain rule with Poisson-subsampled Gaussian KL
+    (I ≈ T/(2ν²n)). Rounds 1–3 on Fashion: 0.335 → 0.330 → **0.2745** (linear on data-free Gabor features). Key
+    regularities: batch size irrelevant at fixed (T, ν); tiny gap; small models and features win under noise. Found
+    Lampert & Zakerinia (arXiv:2605.26222, May 2026): high-probability max-information for DP-SGD, used as a PAC-Bayes
+    prior (MNIST 0.29); no subsampling amplification; closest prior work. Pre-registered transfer to MNIST:
+    **0.099 ± 0.004**, below the published data-free MNIST certificates we know (Lotfi 0.116). Gaussian PAC-Bayes on
+    MNIST: bn_stat 0.228, plain 0.267, Pérez-Ortiz-style baseline 0.349. Mistake: `pkill -f` again killed its own ssh
+    session (pattern matched the ssh command line); use `tmux kill-session` only.
+
+## Next steps (as of 2026-11-20)
+0. DP/MI route: (a) high-probability tail for the information density with amplification (removes the 1/δ₁ = 42
+   factor; worth ~0.03 on MNIST, ~0.05 on Fashion); (b) CIFAR-10 with data-free features (ScatterNet) against
+   García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior
+   centred by MI + small posterior KL (Lampert & Zakerinia's structure, with our amplified MI); (d) verify the published
+   MNIST numbers we compare against (Pérez-Ortiz FCN, García-Pérez MNIST) from the papers.
+
+## Older next steps (as of 2026-11-19 evening)
 1. Diagnose klinv01 on plain networks: track m, the 0-1/CE gap and KL during training; compare where the KL goes
    (per layer, mean vs variance terms) for none vs bn_stat under klinv01; try LayerNorm (per-example, has a free
    per-layer rescaling) with klinv01 to separate "normalization" from "statistics parameters".

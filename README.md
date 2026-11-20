@@ -279,6 +279,31 @@ Ordinary training (Adam, 20 epochs, 3 seeds), test error at widths 64 / 128: non
 - Caveat: in the first `bn_stat` batch, the per-run "statistics KL" of `inv` runs was computed on unrescaled parameters
   (fixed in the code since). Total KLs and certificates are unaffected.
 
+### Certifying a network trained with noisy SGD: mutual information instead of a Gaussian posterior
+
+[`experiments/dp_sgd_bound.py`](experiments/dp_sgd_bound.py), derivation in [`docs/theory.md`](docs/theory.md) §14,
+tables in [`results/v2/dp_summary.md`](results/v2/dp_summary.md).
+
+The certified predictor is the network output by noisy, clipped, Poisson-subsampled SGD (DP-SGD). The prior is the
+algorithm's (unknown, data-free) output marginal. A disintegrated PAC-Bayes-kl bound charges the information density,
+and Markov's inequality bounds it by I(S; W)/δ₁. The mutual information is bounded with the 1/n per example:
+I ≤ n·T·KL(subsampled Gaussian) ≈ T/(2ν²n), where ν is the noise std on the mean gradient. SGD noise is what makes
+reusing the data across epochs cheap, and it is now part of the certificate.
+
+| setting (data-free, no held-out data) | certificate |
+|---|---|
+| Fashion-MNIST, best Gaussian PAC-Bayes (bn_stat + inv KL + klinv01) | 0.347 ± 0.001 |
+| Fashion-MNIST, DP-SGD + MI, linear on data-free Gabor features (3 seeds) | **0.273 ± 0.003** (test 0.210) |
+| MNIST, same recipe transferred unchanged (3 seeds) | **0.099 ± 0.004** (test 0.058) |
+| MNIST, our Gaussian PAC-Bayes pipeline (bn_stat MLP) / Pérez-Ortiz-style f_quad baseline | 0.228 / 0.349 |
+| MNIST, published: Pérez-Ortiz 2021 (CNN), Lampert & Zakerinia 2026 (DP-SGD prior), Lotfi 2022 (compression) | 0.2165 / 0.29 / 0.116 |
+
+- The optimum is a very noisy, short run (I ≈ 6–25 nats, i.e. ~10⁻⁴ nats per example). Small models (linear on
+  data-free features) beat MLPs, as in DP practice (Tramèr & Boneh 2021). The generalization gap is ≈ 0; the slack is
+  the Markov factor (the "no-Markov" value is 0.224 on Fashion and 0.069 on MNIST) plus training error under noise.
+- Main open lever: a high-probability bound on the information density that keeps subsampling amplification
+  (theory.md §14). Lampert & Zakerinia (2026) get high probability but lose amplification.
+
 ## Next steps (proposed)
 
 1. **Move to PyTorch and NAS-Bench-201 / NATS-Bench** (the main literature benchmark) so the numbers compare directly with CVU, ZiCo and others, and to test the CVU sign flip.

@@ -1,6 +1,6 @@
 # Literature notes
 
-What each work actually does, read in full unless marked *(abstract/snippet only)*. Last updated 2026-11-19.
+What each work actually does, read in full unless marked *(abstract/snippet only)*. Last updated 2026-11-20.
 
 ## Closest to this project
 
@@ -81,6 +81,28 @@ sequence of priors P_i that may depend on the past (z_<i) and posteriors Q_i tha
 (Gibbs updates Q̂_{i+1} ∝ e^{−λℓ(·, z_i)}Q̂_i; analogy with online gradient descent, λ ↔ step size) and OPBTest (Q = P,
 KL-free; progressive validation). Disintegrated variants (Sec. 4). Small experiments on online regression/classification.
 Hoeffding-type slack λmK²/2.
+
+## Differential privacy / information-theoretic certificates
+
+**Lampert & Zakerinia (2026). From privacy to generalization: linear max-information bounds for DP-SGD.
+arXiv:2605.26222.** *(read via HTML, appendix partly)* Thm 1: high-probability max-information of DP-SGD (streaming or
+batch, disjoint batches, each example once per epoch, n ≥ Tm), I∞^β ≤ ½·E·T·ν + E·inf_λ (1/λ)[T·F((λ+λ²)/2) + ln(E/β)],
+ν = mζ²/σ², F(x) = (16ν²x² + νx)/(1 − 2νx); leading term = n·E·ζ²/(2σ²) = nρ (linear in n, no Markov). Proof: Jensen
+against an *independent copy* S̃ of the whole dataset, then per-step Gaussian log-likelihood expansion and an MGF bound.
+Thm 2: PAC-Bayes-kl with a DP-SGD prior: kl ≤ (KL(ρ‖π) + κ + ln(4√n/δ))/n, κ = Thm 1 at β = δ/2. **No subsampling
+amplification** (Poisson listed as future work, "worse constants"). Table 1: MNIST MLP, data-free prior 0.32 vs DP-SGD
+prior 0.29 (κ = 42, KL 5,020, posterior train 0.12); CIFAR-10 ConvNet 0.91 vs 0.84. Closest work to our §14 (they bound
+max-information and keep a Gaussian posterior; we bound MI with amplification and certify the network itself via
+Markov).
+
+**Tramèr & Boneh (2021). Differentially private learning needs better features (or much more data). ICLR.
+arXiv:2011.11660.** *(from memory, not re-read)* Under DP, linear models on data-free ScatterNet features beat end-to-end
+CNNs on MNIST / Fashion / CIFAR-10. Motivates our Gabor-feature runs (E-dp).
+
+**Abadi et al. (2016)** DP-SGD (clipping + Gaussian noise, moments accountant). **Mironov (2017); Mironov, Talwar &
+Zhang (2019)**: Rényi DP and the subsampled Gaussian. **Bun & Steinke (2016)** zCDP; I(X; M(X)) ≤ ρn for product
+distributions. **Pensia, Jog & Loh (2018)**: MI bounds for noisy iterative algorithms (whole-dataset sensitivity, no 1/n).
+**Rivasplata et al. (2020)**: PAC-Bayes with priors of small max-information; disintegrated bounds.
 
 ## Theory used
 
