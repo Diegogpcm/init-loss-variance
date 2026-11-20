@@ -308,7 +308,8 @@ reusing the data across epochs cheap, and it is now part of the certificate.
 - Remaining lever (theory.md §14.1): Thm 8 still pays ≈ ln(4/β₁) for the realised posterior divergences, plus a factor
   ≈ 2 for replace-one. A structured Gaussian-chaos tail (theory.md §14.2) is worth ≤ 0.008 at the measured gradient
   diversity (effective rank 9–21), so it was dropped. The bigger slack is worst-case sensitivity: centred gradient
-  variance is 0.37–0.78 of the antipodal worst case's scale, and individual Rényi-filter accounting is next.
+  variance is 0.37–0.78 of the antipodal worst case's scale, but individual Rényi-filter accounting does not convert it
+  into better certificates: the filter drops the misclassified points first (§14.3).
 
 ## Next steps (proposed)
 

@@ -154,10 +154,20 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
       against the worst case's antipodal |h − h′|² = 4. Next lever: individual privacy accounting (Feldman & Zrnic 2021
       Rényi filters), which allows more steps at the same ε.
 
-## Next steps (as of 2026-11-20, updated after entry 28)
+29. **Individual privacy accounting (author: "okay, try that").** Implemented the Feldman–Zrnic Rényi filter for Poisson
+    DP-SGD at orders 2α and 2α−1, which keeps Thm 8's κ while allowing more steps (theory.md §14.3).
+    - Fashion grid, 10–40 epochs: no gain. Best 0.2512 against recipe A's 0.2499.
+    - The filter drops the high-gradient (misclassified) points first, so longer runs train *worse*
+      (20 epochs: 0.217 against 0.200 unfiltered).
+    - Bookkeeping mistake: on Fashion (n = 55k), T₀ should have been 134. The filtered runs had a 9% larger budget and
+      still lost. Not transferred to MNIST/CIFAR.
+    - Author also asked whether the minibatch randomness is credited. Own inclusion: yes (amplification). Others'
+      inclusion: no; DP is worst case over them, and it is worth about 9–15% extra variance in the signal directions,
+      ≈ 0.002. Others' data values: not credited.
+
+## Next steps (as of 2026-11-20, updated after entry 29)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
-   ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: more steps at the same
-   ε, untested; (b) CIFAR-10 with data-free features (ScatterNet) against
+   ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
    García-Pérez et al. 2025 and Lampert & Zakerinia; (c) hybrid: DP-SGD output as the *mean* of a Gaussian prior
    centred by MI + small posterior KL (Lampert & Zakerinia's structure, with our amplified MI); (d) verify the published
    MNIST numbers we compare against (Pérez-Ortiz FCN, García-Pérez MNIST) from the papers.

@@ -19,8 +19,18 @@ def kappa(n, q, sigma, T):
     return k, info["alpha"], info["beta1"]
 
 
+@functools.lru_cache(None)
+def kappa_filtered(n, q, sigma, T0, alpha):
+    """individual-filter runs: replace-one RDP is that of an unfiltered T0-step run, at the single order alpha."""
+    k, info = lz8_kappa(n, lambda a: eps_rep_conv(q, sigma, T0, a), BETA, [alpha])
+    return k, alpha, info["beta1"]
+
+
 def rescore(r):
-    k, a, b1 = kappa(r["n"], round(r["q"], 12), round(r["sigma"], 9), r["T"])
+    if r.get("filter_alpha"):
+        k, a, b1 = kappa_filtered(r["n"], round(r["q"], 12), round(r["sigma"], 9), r["filter_T0"], r["filter_alpha"])
+    else:
+        k, a, b1 = kappa(r["n"], round(r["q"], 12), round(r["sigma"], 9), r["T"])
     n = r["n"]
     c1 = (k + math.log(2 * math.sqrt(n) / D2)) / n
     c2 = (k + math.log(2 * math.sqrt(n) / (D2 / 2))) / n

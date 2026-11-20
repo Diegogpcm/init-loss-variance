@@ -105,12 +105,22 @@ def run(cfg):
     diag = None
     if cfg.get("diag_m"):   # gradient-diversity diagnostic (theory.md s14.2); uses held-out test points, not a certificate input
         diag = GradDiversity(pgrad, Xte[:cfg["diag_m"]], yte[:cfg["diag_m"]], C, B, sigma)
+    filt = None
+    if cfg.get("filter_alpha"):   # individual Renyi filter (Feldman & Zrnic 2021, Thm 4.5), theory.md s14.3
+        filt = IndividualFilter(n, q, sigma, cfg["filter_alpha"], cfg["filter_T0"])
     mom = {k: torch.zeros_like(v) for k, v in th.items()}
     avg, n_avg = {k: torch.zeros_like(v) for k, v in th.items()}, 0   # tail average of iterates (post-processing)
     clipped_frac = []
     for t in range(T):
         lr_t = lr * (0.5 * (1 + math.cos(math.pi * t / T)) if cfg["sched"] == "cos" else 1.0)
-        idx = torch.nonzero(torch.rand(n, generator=gen) < q).flatten()
+        sampled = torch.rand(n, generator=gen) < q
+        if filt is not None:   # charge EVERY point its individual RDP at theta_{t-1}; drop points over budget
+            with torch.no_grad():
+                r = torch.cat([torch.sqrt(sum(v.reshape(v.shape[0], -1).pow(2).sum(1) for v in
+                                             pgrad(th, Xtr[i:i + 4096], ytr[i:i + 4096]).values()))
+                               for i in range(0, n, 4096)])
+            sampled &= filt.step(torch.clamp(r / C, max=1.0))
+        idx = torch.nonzero(sampled).flatten()
         G = {k: torch.zeros_like(v) for k, v in th.items()}
         for i in range(0, len(idx), cfg["chunk"]):
             j = idx[i:i + cfg["chunk"]]
@@ -153,7 +163,46 @@ def run(cfg):
     from rescore_tail import rescore
     if diag is not None:
         res["diag"] = diag.summary()
+    if filt is not None:
+        res.update(filter_alpha=cfg["filter_alpha"], filter_T0=cfg["filter_T0"], **filt.summary())
     return rescore(res)
+
+
+class IndividualFilter:
+    """Feldman & Zrnic (2021) individual Renyi filter for Poisson-subsampled DP-SGD, at the two add/remove orders 2a and
+    2a-1 needed for the weak-triangle replace-one conversion at order a (L-CL-Z App. C). The per-step individual RDP of
+    point i is eps_SGM(q, sigma / r_i, order), with r_i = its clipped gradient norm at theta_{t-1} (units of C) -- the
+    sup over the other points of the add/remove divergence (translation invariance). Budgets B(o) = T0 eps_SGM(q, sigma, o),
+    i.e. those of an unfiltered T0-step run, so the filtered run is (a, eps_rep)-RDP replace-one with the same eps_rep."""
+
+    def __init__(self, n, q, sigma, alpha, T0, grid=4000):
+        import torch
+        from tail_bounds import eps_add
+        self.orders = (int(round(2 * alpha)), int(round(2 * alpha - 1)))
+        self.budget = torch.tensor([T0 * eps_add(q, sigma, o) for o in self.orders], dtype=torch.float64)
+        rs = np.linspace(0, 1, grid + 1)
+        tab = [[0.0] + [eps_add(q, sigma / r, o) for r in rs[1:]] for o in self.orders]
+        self.tab = torch.tensor(tab, dtype=torch.float64)          # 2 x (grid+1), increasing in r
+        self.grid = grid
+        self.cum = torch.zeros(n, 2, dtype=torch.float64)
+        self.active_frac, self.mean_r = [], []
+
+    def step(self, r):
+        import torch
+        k = torch.clamp(torch.ceil(r.double() * self.grid).long(), 0, self.grid)   # round r UP (conservative)
+        rho = self.tab[:, k].T                                                   # n x 2
+        active = ((self.cum + rho) <= self.budget).all(1)
+        self.cum += rho * active[:, None]
+        self.active_frac.append(float(active.double().mean()))
+        self.mean_r.append(float(r.mean()))
+        return active
+
+    def summary(self):
+        used = (self.cum / self.budget).max(1).values
+        af = self.active_frac
+        return dict(filt_active_end=af[-1], filt_active_mid=af[len(af) // 2], filt_active_mean=float(np.mean(af)),
+                    filt_budget_used_median=float(used.median()), filt_exhausted_frac=float((used > 0.999).double().mean()),
+                    filt_mean_r_start=self.mean_r[0], filt_mean_r_end=self.mean_r[-1])
 
 
 class GradDiversity:
@@ -223,10 +272,13 @@ def main():
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--diag_m", type=int, default=0, help="gradient-diversity diagnostic on this many test points")
+    ap.add_argument("--filter_alpha", type=float, default=0, help="individual Renyi filter at replace-one order alpha")
+    ap.add_argument("--filter_T0", type=int, default=0, help="budget = that of an unfiltered T0-step run")
     a = ap.parse_args()
     L = lambda x, f: [f(v) for v in x.split(",")]
     cfgs = [dict(data=a.data, features=a.features, depth=dp, norm=nm, width=w, batch=B, nu=nu, epochs=e, lr=lr, clip=a.clip, sched=a.sched, seed=s,
-                 chunk=a.chunk, threads=a.threads, diag_m=a.diag_m)
+                 chunk=a.chunk, threads=a.threads, diag_m=a.diag_m,
+                 filter_alpha=a.filter_alpha, filter_T0=a.filter_T0)
             for dp in L(a.depths, int) for nm in L(a.norms, str) for w in L(a.widths, int) for B in L(a.batches, int) for nu in L(a.nus, float)
             for e in L(a.epochs, int) for lr in L(a.lrs, float) for s in L(a.seeds, int)]
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
@@ -240,6 +292,9 @@ def main():
                   f"{r['train_avg']:.4f} test {r['test_avg']:.4f} best-of-2 cert {r['cert01_best2']:.4f} | I<= {r['I_ub']:.1f} "
                   f"nats | cert {r['cert01']:.4f} (no-Markov {r['exp_cert01']:.4f}) | clipped {r['clipped_frac']:.2f} "
                   f"[{r['seconds']:.0f}s]", flush=True)
+            if "filter_alpha" in r:
+                print(f"  filter: cert LZ8 {r['cert01_lz8']:.4f} kappa {r['kappa_lz8']:.0f} | active mid {r['filt_active_mid']:.3f} end {r['filt_active_end']:.3f} "
+                      f"exhausted {r['filt_exhausted_frac']:.3f} | mean r {r['filt_mean_r_start']:.3f} -> {r['filt_mean_r_end']:.3f}", flush=True)
             if "diag" in r:
                 print("  diag:", {k: {kk: (round(vv, 4) if isinstance(vv, float) else [round(x, 4) for x in vv[:5]]) for kk, vv in v.items()} for k, v in r["diag"].items()}, flush=True)
 

@@ -371,6 +371,29 @@ so an average pair has 2·trC/T ≈ 0.7–1.6.
   certificate. It is the next lever to test, since training error still falls with epochs (Fashion ν = 0.01:
   0.214 → 0.200 from 10 to 20 epochs).
 
+### 14.3 Individual privacy accounting (Rényi filter) [Feldman & Zrnic 2021, applied here; negative result]
+
+**Construction.** Feldman & Zrnic (2021), Thm 4.5: if each point is charged, at every step, its individual RDP
+ρₜ⁽ⁱ⁾, taken as the sup over the other points of the add/remove divergence and computed from the past and the point
+itself, and is dropped once Σₜρₜ⁽ⁱ⁾ would exceed B, then the composition is (α, B)-RDP.
+- For a Poisson-subsampled Gaussian step, ρₜ⁽ⁱ⁾ = ε_SGM(q, σ/rᵢ, α), with rᵢ the point's clipped gradient norm at
+  θ_{t−1}. This needs every point's gradient norm at every step.
+- Filtering at the two orders 2α and 2α−1 (their Remark 4.4) with budgets T₀·ε_SGM, then the weak-triangle
+  conversion, gives replace-one ε_rep(α) equal to that of an unfiltered T₀-step run. So Thm 8's κ is unchanged while T
+  can grow. Points with r = 0.5 get 4× as many steps.
+- Implementation: `IndividualFilter` in dp_sgd_bound.py (`--filter_alpha 81.5 --filter_T0 146`); rescoring in
+  `rescore_tail.kappa_filtered`.
+
+**Result** (Fashion, recipe A, 10–40 epochs, lr 0.3/1, seed 0; `results/v2/dp_filter_fashion.jsonl`):
+- No gain. Best filtered certificate 0.2512 (10 or 15 epochs), against unfiltered recipe A at 0.2499.
+- Note: Fashion has n = 55k, so recipe A runs 134 steps. T₀ = 146 gave the filter a 9% larger budget (κ 201 against
+  185), and it still did not win.
+- Longer filtered runs have *higher* training error than unfiltered runs of the same length (20 epochs: 0.217
+  against 0.200; 40 epochs: 0.238). By 40 epochs 17% of points have exhausted their budget and about 40% are inactive.
+- Reason: the points whose budget runs out are the high-gradient, i.e. misclassified, points, which are exactly those
+  the training error depends on. Points the model already fits cost little but no longer matter.
+- Verdict: individual accounting does not help the training-error / κ trade-off in this regime.
+
 **Selection.** Hyperparameter selection over K configurations on the same S costs δ₁/K (linear) on this route. Protocol
 used: choose recipes on Fashion-MNIST, then apply them *unchanged* to MNIST (pre-registered transfer, no selection on
 MNIST), and re-seed on Fashion.
