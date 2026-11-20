@@ -206,6 +206,18 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     - Proposed experiment: f-CMI / ld-CMI on Fashion MLP for fixed vs random seed, chaotic vs chaos-suppressed training,
       true vs random labels.
 
+33. **Chaos experiment on Fashion (author: "run the chaos experiment").** theory.md §15.4.
+    - The first two calibrations had hung for hours: fork after torch init deadlocked. Fixed with spawn-started workers.
+    - Chaos index (test flips under a 1e-6 init change): SGD 1.0%; GD lr 0.3 13.8%, lr 0.1 0.7%, lr 0.03 0.17%.
+      Full-batch GD is not chaos-free by default.
+    - Main run, 640 trainings: fixed seed ≈ random seed within 3% for chaotic SGD *and* near-non-chaotic GD.
+    - In the interpolating regime, ld-CMI is pinned to the ghost error, so self-generated noise cannot mask
+      membership. ld bound ≈ 2.1× gen everywhere. SGD vs GD: SGD has ~20% less information, independent of seed
+      (implicit bias, not noise).
+    - Random labels: GD I = 0.62 nats ≈ 0.9·ln 2 (memorisation); chaos does not hide it.
+    - Verdict: chaos-as-noise falsified in the CMI sense. A noise-based explanation must act on training points
+      (not fitting some), which plain SGD does not do.
+
 ## Next steps (as of 2026-11-20, updated after entry 32)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against

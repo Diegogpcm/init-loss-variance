@@ -480,3 +480,51 @@ the *ghost half* of a supersample.
 hypothesis is best pursued as an *explanatory* result, measured with finite-alphabet function-space information:
 fixed vs random seed, chaos suppressed (small lr / large batch / float64 determinism) vs not, true vs random labels.
 
+
+### 15.4 Chaos experiment: does SGD's self-generated noise lower function-space information? [ours, measured; negative]
+Script `experiments/chaos_cmi.py`; results `results/v2/chaos_cmi_{calib,calib2,fashion}.json`. Fashion-MNIST MLP
+784-128-128-10, n = 2000 per half. 2 supersamples × 40 draws of U per cell. Per-pair plug-in ld-CMI I(ΔLᵢ;Uᵢ|z̃) and
+e-CMI, with a permutation null (≈ 0.012 nats for true labels) subtracted.
+
+**Chaos index.** Fraction of test predictions flipped by a 1e-6 init perturbation:
+- SGD (lr 0.1, batch 128, 60 epochs): 1.0%.
+- Full-batch GD: lr 0.3 gives 13.8% (edge of stability, more chaotic than SGD); lr 0.1 gives 0.71%; lr 0.03 gives
+  0.17%; lr 0.01 gives 0.12%.
+- Chosen for the main run: SGD lr 0.1 for 60 epochs (train err 0.25%) vs GD lr 0.03 for 10⁴ steps (train err 0).
+  Both have test error ≈ 18%.
+
+Mean over the 2 supersamples (I in nats, bound = (1/n)Σ√(2I_corr)):
+
+| cond | labels | seed | train | gen | I_ld (corr) | ld bound | bound/gen |
+|---|---|---|---|---|---|---|---|
+| SGD | true | fixed | 0.022 | 0.162 | 0.133 | 0.342 | 2.11 |
+| SGD | true | random | 0.014 | 0.166 | 0.135 | 0.355 | 2.13 |
+| GD | true | fixed | 0 | 0.186 | 0.172 | 0.403 | 2.17 |
+| GD | true | random | 0 | 0.186 | 0.167 | 0.405 | 2.17 |
+| SGD | random | fixed | 0.363 | 0.537 | 0.333 | 0.788 | 1.47 |
+| SGD | random | random | 0.381 | 0.519 | 0.309 | 0.757 | 1.46 |
+| GD | random | fixed | 0 | 0.900 | 0.622 | 1.114 | 1.24 |
+| GD | random | random | 0 | 0.900 | 0.617 | 1.110 | 1.23 |
+
+e-CMI is within 0.01 of ld-CMI everywhere (identical for GD).
+
+**Findings.**
+1. *Fixed seed ≈ random seed, within ≤ 3%, for chaotic SGD **and** for near-non-chaotic GD.* Marginalising the
+   algorithm's randomness (init + order) does not mask membership information. The equality is not caused by chaos:
+   a U-swap changes half the training set, a macroscopic perturbation that decorrelates per-point outcomes whether or
+   not the dynamics are chaotic at the 1e-6 scale.
+2. *Structural reason in the interpolating regime.* Training points are fit for every seed (train err ≈ 0), so ΔLᵢ ≠ 0
+   reveals Uᵢ whenever the ghost point is misclassified, whatever the noise. Self-generated noise only moves *which*
+   ghost points are wrong, not the fact that the training ones are right. I is then pinned to the ghost error
+   (Wang & Mao Thm 3.3); ld-CMI is effectively a reparametrisation of the generalisation gap, and its bound stays
+   ≈ 2.1× gen for true labels in every cell.
+3. *SGD vs GD.* SGD has 20% less information and a 13% smaller gap, but the reduction is the same with a fixed seed.
+   So it is an algorithmic (implicit-bias / not-quite-interpolating) effect, not noise being marginalised.
+4. *Random labels.* GD memorises (gen 0.90, I = 0.62 ≈ 0.90·ln 2); SGD in 60 epochs does not fully fit (train 0.37)
+   and has half the information. Chaos does not suppress memorisation information.
+
+**Verdict.** In the supersample/CMI sense, chaos is not a source of free noise: the hypothesis "the seed noise masks
+sample-specific signal" is falsified for interpolating MLPs at this scale. §15.2's large seed-only disagreement is
+real, but it concerns which *test* points are wrong, which carries no membership information once training points are
+always fit. Any noise-based explanation must act on *training* points (not fitting some of them, i.e. DP-like
+behaviour), which plain SGD does not do.
