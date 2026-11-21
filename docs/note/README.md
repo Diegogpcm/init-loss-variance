@@ -1,9 +1,9 @@
 # Review note: prequential AIS certificate
 
-`ais_certificate.tex` is a self-contained write-up of the certificate in `docs/theory.md` §17: setting and
+`ais_certificate.tex` is a self-contained, paper-style write-up of the certificate in `docs/theory.md` §17: motivation and
 assumptions, the path identity and the certificate with full proofs, the SMC extension, why floating point breaks the
-hypotheses, the exact lattice implementation, validity tests, results, related work and credit, and a checklist of the
-steps to scrutinise.
+AIS), the method with proofs, exactness, experiments, related work, limitations, appendices with the particle and lattice
+proofs, and a reviewer checklist.
 
 Build (standard TeX Live packages only; no .bib file). Locally: `tectonic ais_certificate.tex` (installed via Homebrew), or:
 
