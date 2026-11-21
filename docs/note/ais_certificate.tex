@@ -368,6 +368,62 @@ gradients, data that arrive gradually, weight decay from the prior, randomness f
 accept/reject test. The temperature $1/\lambda$ sets the noise level: with $\lambda=0.25$ the network does not fit the
 training set as tightly as SGD would, which is the price of a small complexity term.
 
+\subsection{Why this training algorithm? What the theorem requires and what is tuning}\label{sec:design}
+The certificate asks two things of the update used at each stage.
+\begin{enumerate}[nosep]
+\item \textbf{Validity.} The update must be a Markov kernel that is exactly reversible with respect to the stage target
+  $\gamma_k$, and it must be fixed before the run starts. This is what makes $C$ computable (Lemma~\ref{lem:path}).
+\item \textbf{Tightness.} The update should actually learn, so that the next blocks are predicted well and the online loss,
+  hence $C$, stays small.
+\end{enumerate}
+Plain SGD fails the first requirement: it is not reversible with respect to any distribution whose density we know, so its
+path ratio cannot be computed. Random-walk Metropolis meets the first but fails the second, since blind proposals in
+$4\cdot10^5$ dimensions are almost always rejected. HMC meets both: it moves using gradients, like gradient descent with
+momentum, and stays exactly reversible thanks to its accept/reject step.
+
+\paragraph{What a leapfrog step is.} HMC treats the weights as the position of a ball rolling on the surface
+$U(w)=\sum_dw_d^2/(2\sigma_d^2)+\lambda L_k(w)$, with a momentum $p$. The physics is $\dot w=M^{-1}p$ (the ball moves along its
+momentum) and $\dot p=-\nabla U(w)$ (the slope accelerates it). The leapfrog integrator approximates this motion: half a
+step on the momentum using the gradient, a full step on the weights, another half step on the momentum
+(Algorithm~\ref{alg:hmc}). It is the heavy-ball update of gradient descent with momentum, without friction. It has two
+exact properties, \emph{time reversibility} (flip the momentum and run again, and the ball retraces its path) and
+\emph{volume preservation}, and one approximate one: it nearly conserves the energy $H=U+\frac12p^\top M^{-1}p$, with an error
+that grows with the step size.
+
+\paragraph{Why accept or reject.} Because the energy is conserved only approximately, the leapfrog move on its own is not
+reversible with respect to $\gamma_k$, and the identity behind $C$ would fail. Accepting with probability
+$\min\{1,e^{H_{\text{before}}-H_{\text{after}}}\}$ corrects the error exactly, for any step size and any number of steps. The
+test therefore matters for \emph{validity}: removing it makes the certificate optimistic (in the test of
+Section~\ref{sec:experiments}, $\E[e^{-C}]=1.60$ instead of $1$). For the \emph{value} of the certificate it matters only
+indirectly: a rejection costs nothing in $C$, but a chain that rejects often learns slowly, so later blocks are scored by
+a less trained network and $C$ grows.
+
+\paragraph{The tuning knobs, and whether they affect the bound.} The step size, the number of leapfrog steps per move ($L=50$),
+the number of moves per stage ($10$) and the mass matrix (the prior precision, which scales the steps per layer) do not
+affect validity: any fixed choice gives a valid certificate. They affect only its tightness, through how fast the network
+learns.
+\begin{center}\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}p{3.3cm}p{4.2cm}p{3.4cm}p{3.6cm}@{}}
+\toprule
+knob & controls & too small & too large\\
+\midrule
+step size $\varepsilon_k$ & distance of one leapfrog step & slow progress & energy error $\propto d\,\varepsilon^4$; moves rejected\\
+leapfrog steps $L$ & distance of one move, about $L\varepsilon$ & random-walk behaviour & wasted computation\\
+moves per stage & how close the chain gets to $\pi_k$ before the next block is scored & next blocks scored by an under-trained network & wasted computation\\
+\bottomrule
+\end{tabular}
+\end{center}
+Our values (step scale $1.5$, $L=50$, $10$ moves) come from small pilot runs on MNIST. Twenty times more HMC computation
+per stage did not change the online loss, so after the first stages mixing is not the bottleneck; at the very first
+stages the step size is (Section~\ref{sec:training}, ``A visible inefficiency'').
+
+\paragraph{The one rule.} These knobs may depend on the stage and even on the training data, but they must be fixed before
+the run. What is forbidden is adapting them during the run, for instance shrinking the step because the previous stage
+rejected many moves. Then the steps are no longer draws from fixed kernels, the forward run and the reversed reference no
+longer use the same kernels, and Lemma~\ref{lem:path} fails. Choosing among configurations by comparing their certificates
+is allowed and is accounted for in Section~\ref{sec:select}.
+
 \subsection{The key identity: forward run versus reversed run}
 Write $\Qt_S$ for the distribution of the whole run $w_{0:K}=(w_0,\dots,w_K)$ produced by Algorithm~\ref{alg:ais}:
 \[
