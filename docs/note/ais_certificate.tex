@@ -439,6 +439,27 @@ Assumption~\ref{as:free} suffices.}
 data-free where it matters, at the output. The posterior $Q_S$ becomes the run's path measure $\Qt_S$. The log-density
 ratio $\log\frac{\dd Q_S}{\dd P}(w)$ in (\ref{eq:disint}) becomes $C$, which, unlike the former, is computable.
 
+\subsection{What the posterior is, and how a classifier is drawn from it}\label{sec:posterior}
+In standard PAC-Bayes one chooses a posterior family (say, Gaussians), fits its parameters, and then draws networks from
+it. Here the order is reversed. The \emph{posterior} is, by definition, the distribution of the training run's output
+given the data, $Q_S=\mathrm{law}(w_K\mid S)$, whatever that distribution turns out to be.
+\begin{itemize}[nosep]
+\item \textbf{Drawing a classifier} from $Q_S$ means running the training of Section~\ref{sec:training} once, with fresh
+  randomness (initialisation, momenta, accept/reject coins). We certify that one network and then use it
+  deterministically. Its training error $\err_S(w_K)$ is computed exactly; unlike certificates for stochastic
+  classifiers, nothing has to be estimated by drawing many networks.
+\item \textbf{Its density is never needed.} $Q_S$ has no closed form, and we never evaluate it: Lemma~\ref{lem:path}
+  replaces the unknown ratio $\frac{\dd Q_S}{\dd P}(w_K)$ by the computable path ratio $e^C$, at the price of the extra term
+  in Proposition~\ref{prop:kl}.
+\item \textbf{Its shape.} $Q_S$ approximates the tempered posterior $\pi_K\propto e^{-\lambda L}P$, closely if the chain
+  mixes well. That distribution is far from Gaussian: it is concentrated on regions of low training loss, with a width set
+  by $\lambda$, and it is multimodal (every permutation of the hidden units gives an equivalent mode). At $\lambda=0.25$ it
+  is ``warm'': sampled networks have training error $1.6\%$ on MNIST, where SGD would reach zero. It may sit far from the
+  prior's centre in parameter space without any distance penalty, which is the main difference from Gaussian posteriors.
+  Measuring its shape directly (for instance, the disagreement between networks from independent runs) is left for
+  future work.
+\end{itemize}
+
 \subsection{What the complexity measures}
 \begin{proposition}[the certificate pays at least the ideal price]\label{prop:kl}
 \[\E_{\Qt_S}[C]=\KL(\Qt_S\|\Pt_S)\ge\KL\big(\mathrm{law}(w_K\mid S)\,\big\|\,P\big).\]
@@ -508,6 +529,46 @@ $\lambda$, is the complexity $C$; divided by $n$ it is the nats per example ente
 linear, so the very lossy first blocks look thin, because they contain few examples. Models that learn quickly from
 little data get small certificates.}\label{fig:curves}
 \end{figure}
+
+\subsection{How many blocks? The single-block limit and Gaussian PAC-Bayes}\label{sec:blocks}
+\paragraph{The block sizes are a hyperparameter.} They may depend on $n$ but must be fixed before seeing the data
+(Assumption~\ref{as:free}), and they count towards the selection budget (Section~\ref{sec:select}) like any other
+choice. Proposition~\ref{prop:intuition} explains the trade-off. The price above the ideal is a sum of per-block Jensen
+gaps, roughly $\frac{\lambda^2}2\mathrm{Var}_{\pi_{k-1}}(\ell_{B_k})$ each, which is large when a big block is scored while the
+posterior is still broad. More and smaller blocks therefore lower the certificate, but every stage costs ten HMC moves
+over all data seen so far. Our compromise is small blocks while the posterior is broad and blocks of $1{,}000$ later. On
+MNIST pixels with $\lambda=1$, replacing uniform blocks of $1{,}000$ by this schedule lowered $C/n$ from $0.163$ to $0.140$
+(certificate $0.217\to0.199$).
+
+\paragraph{One block ($K=1$).} Then $C=\lambda[L(w_0)-L(w_K)]$: $\lambda$ times the training loss of a random
+initialisation on all $n$ examples, minus the final training loss. The run is charged for the prior's ignorance on every
+example at once, with no credit for learning along the way. With perfect mixing,
+$\E[C]=\lambda\E_P[L]-\lambda\E_{\pi}[L]$, which is the realised version of the ``second-law'' bound of Harel et al.\
+(2025), $\KL(\pi\|P)\le\lambda\E_P[L]$. A random initialisation has a cross-entropy of about $2$--$4$ nats per example in
+our models, so $C/n\approx0.4$--$1.0$ and the certificate would be about $0.47$--$0.65$ on MNIST, $0.54$ on Fashion-MNIST and
+$0.83$ on CIFAR-10, against $0.06$, $0.22$ and $0.61$ with the prequential schedule. (These are estimates from the
+first stages of our runs, not separate runs.) The gain comes entirely from splitting the data so that each block is
+charged after the network has learned from the previous ones.
+
+\paragraph{Relation to Gaussian PAC-Bayes (P\'erez-Ortiz et al.).} No choice of blocks reduces the method to the
+Gaussian setting. Both use a data-free Gaussian prior and the same PAC-Bayes theorem, but they differ in the posterior and
+in how its price is computed:
+\begin{center}\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}p{3.0cm}p{6.0cm}p{5.6cm}@{}}
+\toprule
+ & Gaussian PAC-Bayes & this note\\
+\midrule
+posterior & $N(\mu,\Sigma)$, $\mu$ near SGD weights, $\Sigma$ learned & law of the output of an MCMC run\\
+how it is fitted & minimise the bound over $(\mu,\Sigma)$ by gradient descent & it is not fitted; it is what training produces\\
+complexity & closed-form $\KL(N(\mu,\Sigma)\,\|\,P)$ & realised path ratio $C$\\
+what it charges & distance from initialisation; precision of $\Sigma$ & online loss minus final loss\\
+classifier certified & random draws (Gibbs classifier), risk estimated by sampling & one deterministic network\\
+\bottomrule
+\end{tabular}
+\end{center}
+The Gaussian approach can be tight when the trained weights are close to the initialisation relative to the prior's
+scale; ours is tight when the model learns quickly from few examples, wherever in parameter space it ends up.
 
 \subsection{Other annealing paths: invariances and temperature}\label{sec:paths}
 The proof of Lemma~\ref{lem:path} used only that $\gamma_0=P$ and that each $T_k$ is reversible for its $\gamma_k$; the
