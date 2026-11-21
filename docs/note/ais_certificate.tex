@@ -408,6 +408,18 @@ The cause is the step size: the leapfrog energy error grows with the number of p
 $d\,\varepsilon^4$, so the early step $0.17$ is too large for these $4\cdot10^5$-parameter networks. Capping the step at a
 data-free $c\,d^{-1/4}$ should let the network learn from its first examples and lower $C$; this experiment is pending.
 
+\paragraph{Sampling, not optimising.} Within each stage there are two regimes. Right after block $k$ is added, the target
+changes to $\pi_k$, which also asks for a low loss on the new examples, while the network was trained only on the earlier
+blocks. It is out of equilibrium, and the moves drift towards $\pi_k$: on average they increase the posterior density, and
+the loss on the pool, especially on the new block, goes down. This is the learning, and it is what makes the next block's
+score, and hence $C$, small. Once the network has caught up, the moves keep it a sample from $\pi_k$, so the
+\emph{expected} loss stays constant: downhill moves are always accepted, uphill moves are accepted with probability
+$e^{-\Delta H}$, and the two balance. The network then wanders among networks that fit about equally well instead of pushing
+the loss further down. Unlike SGD, which goes downhill until it reaches a minimum, the chain moves towards a
+distribution and stays there on average. The temperature $1/\lambda$ sets how much loss that distribution tolerates: at
+$\lambda=0.25$ the sampled networks keep a training error of $1.6\%$ on MNIST, where SGD would reach zero. A larger $\lambda$
+concentrates the posterior near the minima and lowers the training error, but charges every block more, so $C$ grows.
+
 In total a run takes $67\times10\times50\approx33{,}500$ gradient steps. Compared with SGD, the differences are full-batch
 gradients, data that arrive gradually, weight decay from the prior, randomness from the fresh momenta, and the
 accept/reject test. The temperature $1/\lambda$ sets the noise level: with $\lambda=0.25$ the network does not fit the
