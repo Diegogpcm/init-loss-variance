@@ -314,6 +314,55 @@ Concretely, the run in Algorithm~\ref{alg:ais} is the following training procedu
   sharpens. The step size is a fixed function of the stage, decided in advance.
 \item \textbf{Output.} After the last stage, $w_K$ is the trained network, used deterministically.
 \end{enumerate}
+Algorithm~\ref{alg:train} writes the whole run out as nested loops, and Table~\ref{tab:stages} shows what happens at a
+few stages of an actual run. Note that stage $k$ does not train on block $k$ alone: block $k$ is first used as a test set
+and then added to the training pool, and the HMC moves use full-batch gradients over the entire pool.
+
+\begin{algorithm}[h]
+\caption{The training run of Algorithm~\ref{alg:ais}, written out}\label{alg:train}
+\begin{algorithmic}[1]
+\State $w\gets$ draw from the prior $P$ \Comment{random initialisation}; \ $c\gets0$
+\For{stage $k=1,\dots,K$}
+  \State $c\gets c+\lambda\sum_{i\in B_k}\ell(w,z_i)$ \Comment{score the new block; no update}
+  \State pool $\gets$ examples $1,\dots,n_k$ \Comment{block $k$ joins the training pool}
+  \State $\varepsilon\gets1.5/\sqrt{1+\lambda\max(n_k,300)}$ \Comment{fixed schedule}
+  \For{move $s=1,\dots,10$} \Comment{one HMC move, Algorithm~\ref{alg:hmc}}
+    \State draw momentum $p\sim N(0,M)$; \ $(w',p')\gets(w,p)$
+    \For{leapfrog step $l=1,\dots,50$}
+      \State $g\gets w'/\sigma^2+\lambda\sum_{i\in\text{pool}}\nabla\ell(w',z_i)$ \Comment{full-batch gradient}
+      \State update $p'$ and $w'$ (gradient descent with momentum, Algorithm~\ref{alg:hmc})
+    \EndFor
+    \State with probability $\min\{1,e^{H(w,p)-H(w',p')}\}$: $w\gets w'$ \Comment{otherwise keep $w$}
+  \EndFor
+\EndFor
+\State $C\gets c-\lambda\sum_{i=1}^n\ell(w,z_i)$; \Return $w$ and $C$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}rrrcccc@{}}
+\toprule
+stage & new block & pool size & step size & moves accepted & loss on new block & train / test error\\
+\midrule
+1 & 1--10 & 10 & 0.172 & 0/10 & 3.65 & --\\
+10 & 2{,}281--3{,}280 & 3{,}280 & 0.052 & 10/10 & 0.43 & 0.067 / 0.068\\
+20 & 12{,}281--13{,}280 & 13{,}280 & 0.026 & 9/10 & 0.16 & 0.028 / 0.028\\
+40 & 32{,}281--33{,}280 & 33{,}280 & 0.016 & 10/10 & 0.07 & 0.021 / 0.019\\
+67 & 59{,}281--60{,}000 & 60{,}000 & 0.012 & 10/10 & 0.06 & 0.016 / 0.015\\
+\bottomrule
+\end{tabular}
+\caption{Selected stages of a run (MNIST, scattering features, $\lambda=0.25$). ``Loss on new block'' is the average
+cross-entropy of the current network on examples it has not yet trained on; these are the terms that $C$ adds up.}\label{tab:stages}
+\end{table}
+
+\paragraph{A visible inefficiency.} In this run stages $1$--$6$ accept no move at all: the network stays at its random
+initialisation for its first $320$ examples and is charged about $3.8$ nats for each. The first $1{,}280$ examples account
+for $47\%$ of $C$ on MNIST with scattering features ($36\%$ with Gabor features, $29\%$ on Fashion-MNIST, $23\%$ on CIFAR-10).
+The cause is the step size: the leapfrog energy error grows with the number of parameters $d$, roughly like
+$d\,\varepsilon^4$, so the early step $0.17$ is too large for these $4\cdot10^5$-parameter networks. Capping the step at a
+data-free $c\,d^{-1/4}$ should let the network learn from its first examples and lower $C$; this experiment is pending.
+
 In total a run takes $67\times10\times50\approx33{,}500$ gradient steps. Compared with SGD, the differences are full-batch
 gradients, data that arrive gradually, weight decay from the prior, randomness from the fresh momenta, and the
 accept/reject test. The temperature $1/\lambda$ sets the noise level: with $\lambda=0.25$ the network does not fit the
