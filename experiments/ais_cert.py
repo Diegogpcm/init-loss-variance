@@ -54,17 +54,28 @@ def kl_inv(p, c, tol=1e-12):
 _FEAT_CACHE = {}
 
 
+def hflip(Xraw):
+    """horizontal flip of raw image rows: 784 = 1x28x28 (MNIST, Fashion) or 3072 = 3x32x32 channel-first (CIFAR-10)"""
+    ch, side = (1, 28) if Xraw.shape[1] == 784 else (3, 32)
+    return Xraw.reshape(-1, ch, side, side).flip(-1).reshape(len(Xraw), -1)
+
+
 def load(a, torch, dt):
-    key = (a.data, a.gabor, a.second_order)
+    """returns X (N, d), y, Xte, yte, and Xv: None, or (V, N, d) training inputs under the data-free transformations
+    of --augment (view 0 = identity), used only in the annealing targets (theory.md s17, note Cor. 4(ii))"""
+    key = (a.data, a.gabor, a.second_order, a.augment)
     if key not in _FEAT_CACHE:
         d = np.load(a.data)
         X, Xte = torch.tensor(d["Xtr"]), torch.tensor(d["Xte"])
+        raws = [X] + ([hflip(X)] if a.augment == "flip" else [])
         if a.gabor:                                       # data-free scattering-like features (dp_sgd_bound.py)
             from dp_sgd_bound import gabor_features
-            X, Xte = (gabor_features(Z.float(), second_order=a.second_order) for Z in (X, Xte))
+            f = lambda Z: gabor_features(Z.float(), second_order=a.second_order)
         else:
-            X, Xte = (X - 0.5) / 0.5, (Xte - 0.5) / 0.5  # fixed, data-free pixel scaling
-        _FEAT_CACHE[key] = (X.to(dt), torch.tensor(d["ytr"]).long(), Xte.to(dt), torch.tensor(d["yte"]).long())
+            f = lambda Z: (Z - 0.5) / 0.5                 # fixed, data-free pixel scaling
+        views = [f(Z).to(dt) for Z in raws]
+        Xv = torch.stack(views) if len(views) > 1 else None
+        _FEAT_CACHE[key] = (views[0], torch.tensor(d["ytr"]).long(), f(Xte).to(dt), torch.tensor(d["yte"]).long(), Xv)
     return _FEAT_CACHE[key]
 
 
@@ -154,7 +165,12 @@ def sampler(X, y, logits, pv, lam, bounds, S, L, c, n0, R, P, gen, on_stage=None
     dt, dev = pv.dtype, pv.device
     B = R * P
 
+    def rows(lo, hi):                                     # training inputs; (V, ., d) when augmented
+        return X[:, lo:hi] if X.dim() == 3 else X[lo:hi]
+
     def ce_sum(w, Xb, yb):
+        if Xb.dim() == 3:                                 # augmented: loss averaged over the V views
+            return sum(ce_sum(w, Xv_, yb) for Xv_ in Xb) / len(Xb)
         out = 0
         for s in range(0, len(Xb), chunk):
             lg = logits(w, Xb[s:s + chunk])
@@ -164,7 +180,7 @@ def sampler(X, y, logits, pv, lam, bounds, S, L, c, n0, R, P, gen, on_stage=None
 
     def U_and_grad(w, k_end):
         w = w.detach().requires_grad_()
-        u = 0.5 * (w * w / pv).sum(1) + lam * ce_sum(w, X[:k_end], y[:k_end])
+        u = 0.5 * (w * w / pv).sum(1) + lam * ce_sum(w, rows(0, k_end), y[:k_end])
         g, = torch.autograd.grad(u.sum(), w)
         return u.detach(), g
 
@@ -175,7 +191,7 @@ def sampler(X, y, logits, pv, lam, bounds, S, L, c, n0, R, P, gen, on_stage=None
     for k in range(1, len(bounds)):
         lo, hi = bounds[k - 1], bounds[k]
         with torch.no_grad():
-            lb = ce_sum(w, X[lo:hi], y[lo:hi])            # (B,) online block loss, evaluated BEFORE moving on block k
+            lb = ce_sum(w, rows(lo, hi), y[lo:hi])        # (B,) online block loss, evaluated BEFORE moving on block k
             online_slot += lb
             la = (-lam * lb).view(R, P)
             lnZk = torch.logsumexp(la, 1) - math.log(P)   # (R,)
@@ -210,7 +226,7 @@ def sampler(X, y, logits, pv, lam, bounds, S, L, c, n0, R, P, gen, on_stage=None
             acc += ok.to(dt)
         if cheat == "score_after":
             with torch.no_grad():
-                lb2 = ce_sum(w, X[lo:hi], y[lo:hi])
+                lb2 = ce_sum(w, rows(lo, hi), y[lo:hi])
                 lnZ += (-lam * lb2) - (-lam * lb)
         rec = dict(k=k, n_k=hi, eps=eps, acc=float(acc.mean()) / S, ess=ess,
                    online_ce_mix_batch=float(-lnZk.mean()) / lam / (hi - lo), online_ce_batch=float(lb.mean()) / (hi - lo))
@@ -218,7 +234,7 @@ def sampler(X, y, logits, pv, lam, bounds, S, L, c, n0, R, P, gen, on_stage=None
         if on_stage is not None:
             on_stage(k, rec, w, lo, hi)
     with torch.no_grad():
-        final_ce = ce_sum(w, X, y)
+        final_ce = ce_sum(w, rows(0, len(y)), y)
     C = -lam * final_ce - lnZ.repeat_interleave(P)
     return dict(w=w, lnZ=lnZ, final_ce=final_ce, C=C, online_slot=online_slot, logs=logs)
 
@@ -228,9 +244,11 @@ def main(a):
     torch.set_num_threads(a.threads)
     dt = torch.float64
     dev = torch.device(a.device)
-    X, y, Xte, yte = load(a, torch, dt)
+    X, y, Xte, yte, Xv = load(a, torch, dt)
     perm = torch.randperm(len(X), generator=torch.Generator().manual_seed(a.order_seed))[:a.n]
     X, y = X[perm].to(dev), y[perm].to(dev)               # the training sample S, in its (random) presentation order
+    Xtarget = Xv[:, perm].to(dev) if Xv is not None else X  # inputs of the annealing targets (all views)
+    assert not (a.exact and Xv is not None), "exact mode does not support --augment yet"
     Xte, yte = Xte.to(dev), yte.to(dev)
     if a.random_labels:                                   # control: labels independent of inputs, train and test
         gl = torch.Generator().manual_seed(10_000 + a.order_seed)
@@ -258,7 +276,7 @@ def main(a):
             print(rec, flush=True)
 
     g = torch.Generator(device=dev).manual_seed(a.seed)
-    out = sampler(X, y, logits, pv, a.lam, bounds, a.S, a.L, a.c, a.n0, 1, P, g, on_stage=on_stage)
+    out = sampler(Xtarget, y, logits, pv, a.lam, bounds, a.S, a.L, a.c, a.n0, 1, P, g, on_stage=on_stage)
     w, lnZ = out["w"], float(out["lnZ"][0])
     final_ce = out["final_ce"].cpu().numpy()
     Cs = out["C"].cpu().numpy()
@@ -320,6 +338,8 @@ def parser():
     ap.add_argument("--channels", type=lambda s: [int(v) for v in s.split(",")], default=[16, 32], help="cnn: c1,c2")
     ap.add_argument("--gabor", action="store_true", help="use data-free Gabor/scattering features instead of pixels")
     ap.add_argument("--second_order", action="store_true", help="with --gabor: add second-order scattering maps")
+    ap.add_argument("--augment", default="none", choices=["none", "flip"],
+                    help="targets average the loss over data-free views of each example (identity, horizontal flip)")
     ap.add_argument("--random_labels", action="store_true", help="control: replace train and test labels by noise")
     ap.add_argument("--n", type=int, default=10000)
     ap.add_argument("--width", type=int, default=100)
