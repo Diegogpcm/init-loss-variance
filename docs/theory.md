@@ -635,6 +635,10 @@ Remarks.
 - Multiple passes over the data are free: moves inside a stage are invariant and cost nothing; each point is charged
   once, when it arrives. No distance-from-initialisation penalty: the run reweights the prior rather than shifting it.
 - Mixing quality affects only tightness. A badly mixing chain gives a larger C, never an invalid bound.
+- Credit: Lemma 1 is the AIS / discrete-Jarzynski identity (Neal 2001; Crooks), and extended-space log-weights already
+  bound KL divergences in bidirectional Monte Carlo (Grosse et al. 2015, 2016). What we add is using the realised
+  log-ratio as the complexity of a disintegrated PAC-Bayes bound with an S-dependent extended prior, along a data path
+  (literature.md, "Credit accounting for §17").
 
 ### 17.3 Particles (SMC with resampling)
 Resample-then-move SMC with P particles: at stage k, weights a_k^j = exp(−λ ℓ_{B_k}(w_{k−1}^j)), Ẑ_k = mean_j a_k^j,

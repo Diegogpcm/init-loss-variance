@@ -1,0 +1,513 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,enumitem,xcolor,graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}{Assumption}
+\renewcommand{\theassumption}{A\arabic{assumption}}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\KL}{\mathrm{KL}}
+\newcommand{\kl}{\mathrm{kl}}
+\newcommand{\err}{\mathrm{err}}
+\newcommand{\Qt}{\widetilde{Q}}
+\newcommand{\Pt}{\widetilde{P}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\rint}{\operatorname{rint}}
+\newcommand{\review}[1]{\noindent\textcolor{red!60!black}{\textbf{[Check:]} #1}}
+
+\title{A prequential PAC-Bayes certificate for the output of a data-tempered\\ annealed importance sampler, and an exact implementation}
+\author{Working note for internal review (generated with Claude; to be checked)}
+\date{21 November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We certify the generalisation error of a single, deterministically used neural network produced by a
+Markov chain that anneals from a data-free prior to a tempered posterior by adding training points in blocks. The
+complexity term is the realised log Radon--Nikodym derivative between the law of the whole run and an
+extended-space ``prior'' that depends on the training set through the Markov kernels but whose marginal on the
+output is the data-free prior. It equals $\lambda$ times the prequential (online) log-loss of the run minus its final
+training log-loss, and is computed exactly on the realised run: there is no mixing assumption and no estimated
+expectation. We extend this to sequential Monte Carlo with resampling, explain why floating-point implementations
+cannot satisfy the hypotheses and cannot be repaired by a small correction, and give an implementation on integer
+lattices with exact discrete sampling for which the hypotheses hold exactly, up to ideal random bits and determinism
+of the forward and backward passes. On full-data, ten-class MNIST and Fashion-MNIST with data-free features we obtain
+certificates of $0.0648$ and $0.2206$. The construction reuses classical pieces (annealed importance sampling,
+disintegrated PAC-Bayes); Section~\ref{sec:credit} lists what is borrowed and what appears to be new.
+\end{abstract}
+
+\paragraph{How to read this note.} Sections~\ref{sec:setting}--\ref{sec:main} contain the main argument (Lemma~\ref{lem:path},
+Theorem~\ref{thm:cert}); the step a referee should examine most closely is marked \review{} and collected in
+Section~\ref{sec:checklist}. Code references are to the repository (branch \texttt{v2-accuracy-variance-and-pacbayes}).
+
+\tableofcontents
+
+%======================================================================
+\section{Setting and notation}\label{sec:setting}
+
+\paragraph{Data and losses.} $\mathcal{Z}=\mathcal{X}\times\mathcal{Y}$, $\mathcal{Y}=\{1,\dots,10\}$, $D$ an unknown
+distribution on $\mathcal{Z}$, $S=(z_1,\dots,z_n)\sim D^n$. Networks are indexed by parameters $w$ in a measurable space
+$\mathcal{W}$ ($\R^d$ in the idealised algorithm, a lattice in Section~\ref{sec:exact}); $f_w:\mathcal{X}\to\R^{10}$.
+Two losses:
+\begin{itemize}[nosep]
+\item the training loss $\ell(w,z) = -\log \operatorname{softmax}(f_w(x))_y\ \ (\ge 0)$, used only to define the annealing
+  targets; any measurable function $\ell:\mathcal{W}\times\mathcal{Z}\to\R$ would do;
+\item the 0-1 loss $\ell_{01}(w,z)=\mathbf{1}[\arg\max f_w(x)\neq y]$, which the certificate is about:
+  $\err_S(w)=\frac1n\sum_i \ell_{01}(w,z_i)$, $\err_D(w)=\E_{z\sim D}\ell_{01}(w,z)$.
+\end{itemize}
+$\kl(q\,\|\,p)=q\log\frac qp+(1-q)\log\frac{1-q}{1-p}$ is the binary relative entropy.
+
+\paragraph{Order and stages.} A permutation of $\{1,\dots,n\}$ and stage boundaries
+$0=n_0<n_1<\dots<n_K=n$ are fixed independently of $S$ (in the code: a seeded random permutation; boundaries
+$10,20,40,\dots$ doubling up to blocks of $1000$). After relabelling, block $k$ is $B_k=\{n_{k-1}+1,\dots,n_k\}$, and
+\[
+\ell_{B_k}(w)=\sum_{i\in B_k}\ell(w,z_i),\qquad L_k(w)=\sum_{j\le k}\ell_{B_j}(w)=\sum_{i\le n_k}\ell(w,z_i).
+\]
+
+\paragraph{Prior and targets.} $P$ is a probability measure on $\mathcal{W}$ chosen before seeing $S$ (Gaussian
+$N(0,\sigma_g^2)$ per coordinate, $\sigma_g^2 = s/\mathrm{fan\_in}$ for weights and $0.1$ for biases; $s=2$). For an inverse
+temperature $\lambda>0$, the unnormalised targets are the measures
+\[
+\gamma_0=P,\qquad \gamma_k(\dd w)=e^{-\lambda L_k(w)}\,P(\dd w)\quad(k=1,\dots,K),
+\]
+with normalisers $Z_k=\gamma_k(\mathcal{W})\in(0,1]$ and normalised targets $\pi_k=\gamma_k/Z_k$.
+
+\paragraph{Kernels.} For each $k$, $T_k=T_k^{S}$ is a Markov kernel on $\mathcal{W}$ that may depend on $S$ and $k$.
+
+\begin{assumption}[reversibility]\label{as:rev}
+For every $S$ and $k$, $T_k$ is reversible with respect to $\gamma_k$:
+$\gamma_k(\dd x)\,T_k(x,\dd y)=\gamma_k(\dd y)\,T_k(y,\dd x)$ as measures on $\mathcal{W}^2$.
+\end{assumption}
+\begin{assumption}[data-free ingredients]\label{as:free}
+$P$, the permutation and the stage boundaries do not depend on $S$. The kernels may depend on $S$ and $k$ (step size,
+mass matrix, even proposals computed from all of $S$), but are fixed before the run starts: they do not depend on the
+realised path. All maps $(S,x)\mapsto T_k^S(x,\cdot)$ are measurable.
+\end{assumption}
+
+\begin{algorithm}[t]
+\caption{Prequential AIS certificate (\texttt{experiments/ais\_cert.py}, \texttt{--P 1})}\label{alg:ais}
+\begin{algorithmic}[1]
+\State draw $w_0\sim P$; \ $c\gets 0$
+\For{$k=1,\dots,K$}
+  \State $c\gets c+\lambda\,\ell_{B_k}(w_{k-1})$ \Comment{block $k$ scored before any move has used it}
+  \State draw $w_k\sim T_k(w_{k-1},\cdot)$ \Comment{$S$ Metropolis-adjusted HMC moves targeting $\pi_k$}
+\EndFor
+\State $C\gets c-\lambda L_K(w_K)$
+\State \Return $w_K$ and the certificate $\err_D(w_K)\le \kl^{-1}\!\big(\err_S(w_K),\ (C+\log\frac{2\sqrt n}{\delta})/n\big)$
+\end{algorithmic}
+\end{algorithm}
+
+Algorithm~\ref{alg:ais} defines, for each $S$, the law of the run
+\[
+\Qt_S(\dd w_{0:K})=P(\dd w_0)\prod_{k=1}^K T_k(w_{k-1},\dd w_k),
+\]
+and the complexity
+\[
+C(w_{0:K})=\lambda\Big[\sum_{k=1}^K\ell_{B_k}(w_{k-1})-L_K(w_K)\Big],
+\]
+$\lambda$ times (the prequential log-loss of the run minus the final training log-loss). Here
+$\kl^{-1}(q,\varepsilon)=\sup\{p\in[q,1]:\kl(q\|p)\le\varepsilon\}$.
+
+%======================================================================
+\section{Main result}\label{sec:main}
+
+Define the extended-space reference measure (``run the kernels backwards from the prior'')
+\[
+\Pt_S(\dd w_{0:K})=P(\dd w_K)\prod_{k=K}^{1}T_k(w_k,\dd w_{k-1}).
+\]
+It is a probability measure, it depends on $S$ through the kernels, and its $w_K$-marginal is $P$ for every $S$
+(integrate out $w_0$, then $w_1$, and so on, using $T_k(w_k,\mathcal{W})=1$).
+
+\begin{lemma}[path identity]\label{lem:path}
+Under Assumption~\ref{as:rev}, for every $S$, $\Qt_S=e^{C}\,\Pt_S$ as measures on $\mathcal{W}^{K+1}$. In particular
+$\Qt_S$ and $\Pt_S$ are mutually absolutely continuous and $\dd\Qt_S/\dd\Pt_S=e^{C}$.
+\end{lemma}
+
+\begin{proof}
+Write $P(\dd w_0)=e^{\lambda\ell_{B_1}(w_0)}\gamma_1(\dd w_0)$ (since $L_1=\ell_{B_1}$). By Assumption~\ref{as:rev},
+$\gamma_1(\dd w_0)T_1(w_0,\dd w_1)=\gamma_1(\dd w_1)T_1(w_1,\dd w_0)$. Next
+$\gamma_1(\dd w_1)=e^{\lambda\ell_{B_2}(w_1)}\gamma_2(\dd w_1)$ and reversibility of $T_2$ moves $\gamma_2$ to $w_2$.
+After $K$ steps,
+\[
+\Qt_S(\dd w_{0:K})=\exp\Big(\lambda\sum_{k=1}^K\ell_{B_k}(w_{k-1})\Big)\,\gamma_K(\dd w_K)\prod_{k=K}^{1}T_k(w_k,\dd w_{k-1}),
+\]
+and $\gamma_K(\dd w_K)=e^{-\lambda L_K(w_K)}P(\dd w_K)$. Each step is an identity between measures on the product
+space obtained by multiplying a measure identity on two coordinates by kernels and positive functions of the other
+coordinates. Only the measure form of detailed balance is used, so atoms of $T_k$ (Metropolis rejections) need no
+separate treatment. Since $e^{C}\in(0,\infty)$ everywhere, the two measures are mutually absolutely continuous.
+\end{proof}
+
+\begin{theorem}[certificate]\label{thm:cert}
+Let $n\ge 8$ and $\delta\in(0,1)$. Under Assumptions~\ref{as:rev}--\ref{as:free}, with probability at least $1-\delta$
+over the joint draw of $S\sim D^n$ and the run $w_{0:K}\sim\Qt_S$,
+\[
+\kl\big(\err_S(w_K)\,\big\|\,\err_D(w_K)\big)\ \le\ \frac{C+\log(2\sqrt n/\delta)}{n}.
+\]
+\end{theorem}
+
+\begin{proof}
+Let $f_S(w)=\exp\big(n\,\kl(\err_S(w)\|\err_D(w))\big)$. For every fixed $w$, $\err_S(w)$ is a mean of $n$ i.i.d.\
+Bernoulli variables, so $\E_S f_S(w)\le 2\sqrt n$ (Maurer, 2004, Theorem~1; $n\ge 8$). Let
+$\varphi=f_S(w_K)\,e^{-C}$. By Lemma~\ref{lem:path}, for every $S$,
+\[
+\E_{\Qt_S}[\varphi]=\int f_S(w_K)\,e^{-C}\,\dd\Qt_S=\int f_S(w_K)\,\dd\Pt_S=\E_{w\sim P}[f_S(w)],
+\]
+the last step because $f_S(w_K)$ depends on the path only through $w_K$ and the $w_K$-marginal of $\Pt_S$ is $P$.
+Since $P$ does not depend on $S$, Tonelli's theorem gives
+\[
+\E_S\E_{\Qt_S}[\varphi]=\E_{w\sim P}\,\E_S[f_S(w)]\le 2\sqrt n.
+\]
+By Markov's inequality over the joint draw, $\Prob(\varphi\ge 2\sqrt n/\delta)\le\delta$. On the complement,
+$n\,\kl(\err_S(w_K)\|\err_D(w_K))-C<\log(2\sqrt n/\delta)$.
+\end{proof}
+
+\review{The extended reference $\Pt_S$ depends on $S$, which a standard PAC-Bayes prior may not. The proof uses $\Pt_S$
+only through integrals of functions of $w_K$, whose law under $\Pt_S$ is the data-free $P$; Tonelli is then applied to
+$P\otimes D^n$. Please check that nothing else in the argument needs $\Pt_S$ to be data-free.}
+
+\begin{remark}[what may depend on $S$]\label{rem:what}
+The kernels may use $S$ arbitrarily, provided each is $\gamma_k$-reversible and fixed before the run. The targets may
+also be any $S$-dependent sequence: the same proof gives Corollary~\ref{cor:general}. The prior, the stage boundaries and
+the order must be data-free (otherwise they are part of the randomness and must appear in the ratio), and nothing may
+adapt to the realised path (an adaptive step size makes $T_k$ depend on $w_{0:k-1}$ and breaks the factorisation of
+$\Qt_S$).
+\end{remark}
+
+\begin{corollary}[general targets, augmentation, temperature paths]\label{cor:general}
+Let $\gamma_0=P$ and let $\gamma_1,\dots,\gamma_K$ be any positive finite measures, possibly depending on $S$, of the form
+$\gamma_k=e^{-U_k}P$, with $T_k$ reversible w.r.t.\ $\gamma_k$. Then Theorem~\ref{thm:cert} holds with
+\[
+C=\sum_{k=1}^K\big(U_k-U_{k-1}\big)(w_{k-1})\;-\;U_K(w_K),\qquad U_0\equiv 0 .
+\]
+Examples: (i) $U_k=\lambda L_k$ gives the $C$ above. (ii) Augmentation: $U_k=\lambda\sum_{i\le n_k}\frac1{|G|}\sum_{g\in G}\ell(w,gz_i)$
+for a fixed, data-free finite set $G$ of input transformations; the certificate still concerns $\err_D$ of the 0-1 loss on
+untransformed inputs. (iii) Temperature path (Section~\ref{sec:credit}): $U_k=\beta_k\hat L(w)$ with $0=\beta_0<\dots<\beta_K$
+gives $C=\sum_k(\beta_k-\beta_{k-1})\hat L(w_{k-1})-\beta_K\hat L(w_K)$.
+\end{corollary}
+\begin{proof}
+Repeat the proof of Lemma~\ref{lem:path} with $\gamma_{k-1}=e^{U_k-U_{k-1}}\gamma_k$; the rest is unchanged.
+\end{proof}
+
+\begin{proposition}[no free lunch]\label{prop:kl}
+$\E_{\Qt_S}[C]=\KL(\Qt_S\|\Pt_S)\ge\KL(\mathcal{L}(w_K\mid S)\,\|\,P)$.
+\end{proposition}
+\begin{proof}
+The equality is Lemma~\ref{lem:path}; the inequality is the data-processing inequality for the projection
+$w_{0:K}\mapsto w_K$, whose push-forwards are $\mathcal{L}(w_K\mid S)$ and $P$.
+\end{proof}
+So, in expectation, the certificate is never better than the ordinary disintegrated PAC-Bayes bound with the same
+data-free prior and the best possible posterior for this output (its own law). The method does not evade the usual
+limits; it makes an upper bound on that KL computable for a posterior (a tempered Bayesian posterior over a network)
+that Gaussian variational families approximate poorly.
+
+\begin{remark}[interpretation and properties]
+(a) Multiple passes over the data inside a stage cost nothing: moves are invariant, and each point is charged once,
+when it arrives. (b) There is no distance-from-initialisation penalty: the run reweights the prior rather than
+displacing it. (c) Poor mixing only enlarges $C$; it never invalidates the bound. (d) $C/n$ is $\lambda$ times the area under
+the online log-loss curve minus the final training loss, so the certificate is good exactly when the model learns
+fast from few examples.
+\end{remark}
+
+\begin{corollary}[selection over configurations]\label{cor:select}
+If $G$ configurations (architecture, $\lambda$, features, schedule, seed of the run) are each run and the reported one is
+chosen after looking at the certificates, applying Theorem~\ref{thm:cert} to each with $\delta/G$ makes the bound hold
+simultaneously for all of them. We fix $G=100$ per dataset in advance and count every run ever made on it; at
+$n=60{,}000$ this costs $\log(100)/n\approx 8\cdot10^{-5}$.
+\end{corollary}
+
+%======================================================================
+\section{Sequential Monte Carlo with resampling}\label{sec:smc}
+
+With $P$ particles, potentials $G_k=\gamma_k/\gamma_{k-1}=e^{-\lambda\ell_{B_k}}$ and multinomial resampling at every
+stage (resample, then move):
+
+\begin{algorithm}[h]
+\caption{SMC version (\texttt{--P} $>1$)}\label{alg:smc}
+\begin{algorithmic}[1]
+\State draw $x_0^1,\dots,x_0^P\sim P$ i.i.d.
+\For{$k=1,\dots,K$}
+  \State $W_k^m\propto G_k(x_{k-1}^m)$; \ $\hat Z_k=\frac1P\sum_m G_k(x_{k-1}^m)$
+  \State for $j=1..P$: draw ancestor $a_k^j\sim\mathrm{Cat}(W_k)$, then $x_k^j\sim T_k(x_{k-1}^{a_k^j},\cdot)$
+\EndFor
+\State draw $b\sim\mathrm{Unif}\{1..P\}$; output $x_K^b$, with $C=-\lambda L_K(x_K^b)-\log\hat Z$, \ $\hat Z=\prod_k\hat Z_k$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{proposition}\label{prop:smc}
+Theorem~\ref{thm:cert} holds for the output $x_K^b$ of Algorithm~\ref{alg:smc} with $C=-\lambda L_K(x_K^b)-\log\hat Z$.
+For $P=1$ this is the $C$ of Algorithm~\ref{alg:ais}.
+\end{proposition}
+
+\begin{proof}
+Write $\xi$ for all particles $x_{0:K}^{1:P}$ and ancestors $a_{1:K}^{1:P}$. The law of $(\xi,b)$ has density (w.r.t.\
+$P^{\otimes P}$ on the initial particles, the kernels, and counting measure on indices)
+\[
+\Qt(\xi,b)=\frac1P\prod_{j}\!P(\dd x_0^j)\prod_{k=1}^K\prod_j W_k^{a_k^j}\,T_k(x_{k-1}^{a_k^j},\dd x_k^j).
+\]
+Given $(\xi,b)$, define the lineage $b_K=b$, $b_{k-1}=a_k^{b_k}$. Let $\rho$ be the Feynman--Kac path measure
+$\rho(\dd x_{0:K})=Z_K^{-1}P(\dd x_0)\prod_k G_k(x_{k-1})T_k(x_{k-1},\dd x_k)$. By induction on $k$, using
+$P\,G_1=\gamma_1$, invariance of $\gamma_k$ under $T_k$ and $\gamma_k G_{k+1}=\gamma_{k+1}$, its $x_K$-marginal is
+$\pi_K$. Define the conditional-SMC extended target (Andrieu, Doucet and Holenstein, 2010)
+\[
+\tilde\pi(\xi,b)=\frac{1}{P^{K+1}}\,\rho\big(\dd x_{0:K}^{b_{0:K}}\big)\prod_{j\ne b_0}P(\dd x_0^j)\prod_{k=1}^K\prod_{j\ne b_k}W_k^{a_k^j}\,T_k(x_{k-1}^{a_k^j},\dd x_k^j).
+\]
+It is a probability measure: $(b,a_1^{b_1},\dots,a_K^{b_K})\leftrightarrow(b_0,\dots,b_K)$ is a bijection onto
+$\{1..P\}^{K+1}$, $\rho$ has mass one, and the remaining factors are conditional laws. Its lineage end point $x_K^{b}$
+has law $\pi_K$. In the ratio $\Qt/\tilde\pi$ all non-lineage factors cancel, leaving
+\[
+\frac{\Qt}{\tilde\pi}=\frac{P^{-1}P(\dd x_0^{b_0})\prod_k W_k^{b_{k-1}}T_k(x_{k-1}^{b_{k-1}},\dd x_k^{b_k})}{P^{-(K+1)}Z_K^{-1}P(\dd x_0^{b_0})\prod_k G_k(x_{k-1}^{b_{k-1}})T_k(x_{k-1}^{b_{k-1}},\dd x_k^{b_k})}
+=P^K Z_K\prod_k\frac{W_k^{b_{k-1}}}{G_k(x_{k-1}^{b_{k-1}})}=\frac{Z_K}{\hat Z},
+\]
+since $W_k^{m}/G_k(x_{k-1}^m)=1/\sum_{m'}G_k(x_{k-1}^{m'})$. Now set
+$\Pt=\tilde\pi\cdot\frac{\dd P}{\dd\pi_K}(x_K^b)$, a probability measure (its integral is $\E_{\pi_K}[\dd P/\dd\pi_K]=1$) whose
+$x_K^b$-marginal is $P$. Then
+$\dd\Qt/\dd\Pt=\frac{Z_K}{\hat Z}\cdot\frac{\dd\pi_K}{\dd P}(x_K^b)=\frac{e^{-\lambda L_K(x_K^b)}}{\hat Z}=e^{C}$, and the
+proof of Theorem~\ref{thm:cert} applies verbatim with $w_K$ replaced by $x_K^b$.
+\end{proof}
+
+\begin{remark}
+The code outputs slot $b=1$ rather than a uniformly drawn $b$. After multinomial resampling and independent moves the final
+particles are exchangeable given $\hat Z$, and $\hat Z$ is permutation invariant, so $(x_K^1,\hat Z)$ has the same law as
+$(x_K^b,\hat Z)$. The best of the $P$ particles is certified at $\delta/P$. Online, $-\frac1\lambda\log\hat Z_k$ is the
+log-loss of the particle-mixture predictive, which is at most the single chain's by Jensen. In practice 8 particles reduce
+$C$ by at most 3\%.
+\end{remark}
+
+%======================================================================
+\section{Why floating point breaks the hypotheses, and an exact implementation}\label{sec:exact}
+
+\paragraph{The problem.} Lemma~\ref{lem:path} needs exact reversibility. A floating-point HMC kernel violates it in
+three ways: the leapfrog map is not exactly time-reversible, the Gaussian draws are not exactly Gaussian, and the
+Metropolis test uses a rounded exponential. On a computer the state space is a finite set. A deterministic proposal that
+is not an exact bijection of that set makes $\Pt_S$ assign zero mass to some paths that $\Qt_S$ can produce, so the true
+log-ratio is $+\infty$ there rather than ``$C$ plus a small error''. The error therefore cannot be handled by a bound on
+$C$; it has to be removed. The same issue is known in differential privacy (Mironov, 2012; Jin et al., 2022, who report
+practical attacks on DP-SGD's floating-point Gaussian noise) and is fixed there by exact discrete sampling (Canonne,
+Kamath and Steinke, 2020). It applies equally to any certificate built on floating-point noise.
+
+\paragraph{The lattice sampler} (\texttt{experiments/exact\_hmc.py}). Fix $\Delta=2^{-24}$ and group-wise prior variances
+$v_g\in\mathbb{Q}$.
+\begin{itemize}[nosep]
+\item \emph{State} $(i,j)\in\Z^d\times\Z^d$; weights $w=\Delta i$ (exact in float64 for $|i|<2^{53}$); momenta $p_g=\epsilon_g j$
+  with $\epsilon_g=(v_gN)^{-1/2}$, $N=2^{24}$.
+\item \emph{Prior}: $P(i)\propto\prod_d\exp(-i_d^2/(2s_g^2))$ with $s_g^2=v_g/\Delta^2\in\mathbb{Q}$, the discrete Gaussian,
+  sampled exactly (Canonne et al., Algorithm~3, big-integer arithmetic).
+\item \emph{Momentum}: $\mu(j)\propto\prod_d\exp(-j_d^2/(2N))$, sampled exactly (same algorithm, vectorised, int64, overflow
+  excluded by an assertion). Kinetic energy $\kappa(j)=\sum_dj_d^2/(2N)\in\mathbb{Q}$.
+\item \emph{Targets}: $\pi_k(i)\propto P(i)\exp\big(-\lambda\sum_{b\le k}\hat\ell_b(i)\big)$ where $\hat\ell_b(i)$ is the float64
+  number returned by one fixed computation of the block-$b$ cross-entropy (per-example losses from one forward call on
+  block $b$, summed by the exactly-rounded \texttt{math.fsum}). Any deterministic function of $i$ is allowed: it
+  \emph{defines} the target, and the same function enters $C$. Energies $E_k(i)=\sum_d i_d^2/(2s_g^2)+\lambda\sum_{b\le k}\hat\ell_b(i)$
+  are exact rationals (floats are dyadic rationals; $\lambda\in\mathbb{Q}$).
+\item \emph{Proposal}: with step $h$ and any deterministic gradient surrogate $\hat g(i)$, the integer shears
+  \[
+  A_\tau:(i,j)\mapsto(i,\ j-\rint(\tau\hat g(i)/\epsilon)),\qquad B_\tau:(i,j)\mapsto(i+\rint(c_\tau j),\ j),\ \ c_\tau=\tau v\epsilon/\Delta,
+  \]
+  composed palindromically, $\Phi=A_{h/2}B_hA_h\cdots A_hB_hA_{h/2}$ ($L$ position shears), followed by the flip
+  $F(i,j)=(i,-j)$.
+\item \emph{Acceptance}: with probability $\min\{1,e^{\Delta H}\}$, $\Delta H=E_k(i)+\kappa(j)-E_k(i')-\kappa(j')\in\mathbb{Q}$, using an exact
+  Bernoulli$(e^{-\gamma})$ sampler for rational $\gamma$ (Canonne et al., Algorithm~1).
+\item \emph{One move}: refresh $j\sim\mu$, propose $(i',j')=F\Phi(i,j)$, accept or keep $i$, discard the momentum. $T_k$ is
+  $S$ such moves.
+\end{itemize}
+
+\begin{proposition}\label{prop:exact}
+If $\hat g$ and $\hat\ell_b$ are deterministic functions of $i$ and the random bits are ideal, each $T_k$ of the lattice
+sampler is exactly reversible w.r.t.\ $\pi_k$ on $\Z^d$, $w_0$ has law exactly $P$, and $C=\lambda[\sum_k\hat\ell_k(i_{k-1})-\sum_b\hat\ell_b(i_K)]$
+is an exact rational. Hence Theorem~\ref{thm:cert} holds for the lattice network $\Delta i_K$ as the computer evaluates it.
+\end{proposition}
+
+\begin{proof}
+\emph{$F\Phi$ is an involution of $\Z^{2d}$.} Each shear is a bijection with inverse obtained by negating the increment:
+$A_\tau^{-1}(i,j)=(i,j+\rint(\tau\hat g(i)/\epsilon))$, exact in integers for any deterministic $\hat g$. Because $\rint$ and
+float multiplication are odd ($\rint(-x)=-\rint(x)$ for round-half-to-even; $\mathrm{fl}(c\cdot(-j))=-\mathrm{fl}(c\cdot j)$),
+$FB_\tau F=B_\tau^{-1}$; and $FA_\tau F=A_\tau^{-1}$ because $A_\tau$'s increment depends only on $i$. Hence
+$F\Phi F=\Phi^{-1}$ for the palindromic $\Phi$, i.e.\ $(F\Phi)^2=\mathrm{id}$.
+
+\emph{The Metropolis step is reversible on $\Z^{2d}$} w.r.t.\ $\pi_k\otimes\mu$: for a deterministic involutive proposal on a
+countable space the standard argument applies with counting measure (no Jacobian), and the acceptance probability is
+realised exactly.
+
+\emph{The position kernel of one move is reversible w.r.t.\ $\pi_k$.} For $i\ne i'$,
+$\pi_k(i)T(i,i')=\sum_{j:\ (F\Phi(i,j))_1=i'}\pi_k(i)\mu(j)\,\alpha\big((i,j),F\Phi(i,j)\big)$. The map $j\mapsto j'=(F\Phi(i,j))_2$
+is a bijection from $\{j:(F\Phi(i,j))_1=i'\}$ onto $\{j':(F\Phi(i',j'))_1=i\}$, with inverse given by the same formula, since
+$F\Phi$ is an involution. Detailed balance on $\Z^{2d}$ turns each summand into
+$\pi_k(i')\mu(j')\alpha\big((i',j'),(i,j)\big)$, whose sum over $j'$ is $\pi_k(i')T(i',i)$. Compositions of $S$ such moves are
+reversible as well (powers of a $\pi_k$-self-adjoint operator).
+
+\emph{The rest.} $w_0$ is an exact discrete Gaussian draw. $C$ uses the same $\hat\ell_b$ as the targets and telescopes
+exactly in rational arithmetic; it is rounded upward before use.
+\end{proof}
+
+\paragraph{Remaining assumptions, and how they are audited.} (i) Ideal random bits, as in all differential-privacy and
+MCMC work. (ii) Determinism: the same $i$ must give the same float bits for $\hat g$ and $\hat\ell_b$. At every stage the
+code recomputes all earlier block losses at the current state and compares bit for bit. Every tenth move it also runs
+$F\Phi$ twice and checks exact return to the start. The gradient surrogate does not need to be accurate; it affects
+acceptance only.
+
+%======================================================================
+\section{Validity tests}\label{sec:tests}
+All tests are in \texttt{experiments/ais\_validity.py}; outputs in \texttt{results/v2/ais\_valid/}.
+
+\paragraph{(a) Path identity by brute force.} Lemma~\ref{lem:path} and the marginal property imply
+$\E_{\Qt_S}[e^{-C}g(w_K)]=\E_{w\sim P}[g(w)]$ for every $g\ge0$; in particular $\E[e^{-C}]=1$. Setup: MLP 2-4-3 (31
+parameters), $n=8$, stages $\{2,4,8\}$, $\lambda=0.3$, two HMC moves of five leapfrog steps per stage, $2\cdot10^6$
+independent runs per case, ground truth from $4\cdot10^6$ prior draws. Heavy-tailed weights bias the sample mean
+\emph{downwards}; validity only needs $\E[e^{-C}f(w_K)]\le\E_Pf$ for $f\ge0$, so the dangerous direction is
+``weighted $>$ prior''.
+
+\begin{center}\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+case ($c$ = step scale) & $\E[e^{-C}]$ & $\E[e^{-C}L_K/n]$ (prior 1.503) & $\E[e^{-C}\mathbf 1\{\err_S=0\}]$ (prior 0.00100) & verdict\\
+\midrule
+AIS, float, $c=1.2$ & 0.993 & 1.477 & 0.00101 & pass\\
+SMC ($P=4$), float, $c=1.2$ & 0.993 & 1.474 & 0.00100 & pass\\
+AIS, float, $c=2.0$ & 0.998 & 1.494 & 0.00100 & pass\\
+AIS, exact lattice, $c=1.2$, $5\cdot10^5$ runs & $1.003\pm0.007$ & $1.509\pm0.023$ & $0.00100\pm0.00003$ & pass\\
+control: no Metropolis test, $c=1.2$ & 1.60 ($z=15$) & 3.62 & 0.00083 & caught\\
+control: block scored after its moves, $c=1.2$ & 1.08 ($z=64$) & 1.39 & 0.00215 & caught\\
+\bottomrule
+\end{tabular}}
+\end{center}
+The exact run performed 30,090 explicit round trips with no failure, and every determinism audit passed.
+
+\paragraph{(b) Exact samplers.} The discrete Gaussian at variance $3$, $50$ and $2^{24}$ ($4\cdot10^5$ draws each) gives
+$\chi^2$ $p$-values $0.38$, $0.89$, $0.48$. The big-integer sampler at $\sigma^2=9/4$ gives $p=0.98$. Bernoulli$(e^{-1/3})$:
+$0.714$ vs $0.7165$ (SE $0.003$).
+
+\paragraph{(c) Coverage and random labels} (MNIST, Gabor features, MLP 833-100-10, $n=1000$, 20 seeds per row, each a
+different training subset and order). There were no violations in 120 runs.
+\begin{center}\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+labels & $\lambda$ & train & test & certificate (mean / min)\\
+\midrule
+true & 0.25 / 1 / 4 & 0.169 / 0.051 / 0.013 & 0.180 / 0.073 / 0.047 & 0.503/0.465, \ 0.563/0.525, \ 0.826/0.788\\
+random & 0.25 / 1 / 4 & 0.879 / 0.834 / 0.622 & 0.900 & 0.961/0.949, \ 0.986/0.983, \ 1.000/1.000\\
+\bottomrule
+\end{tabular}}
+\end{center}
+With random labels every classifier has true error $0.9$. At $\lambda=4$ the network fits a third of the noise, and $C$ grows
+to compensate ($C/n=3.6$). At full size ($n=60{,}000$, $\lambda=0.25$) the random-label certificate is $0.924$.
+
+%======================================================================
+\section{Results}\label{sec:results}
+Full training sets, ten classes, standard test sets, $\delta=0.025$; data-free prior $N(0,2/\mathrm{fan\_in})$; data-free
+features (fixed Gabor filters or second-order scattering, per-example standardisation); 10 HMC moves of 50 leapfrog
+steps per stage. The selection-adjusted values ($\delta/100$) differ by at most $0.0002$.
+\begin{center}\small
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+data & model / sampler & $\lambda$ & train & test & certificate\\
+\midrule
+MNIST & MLP on pixels, AIS & 0.5 & 0.037 & 0.043 & 0.167\\
+MNIST & MLP 833-100-10 on Gabor, AIS, two seeds & 0.25 & 0.023 & 0.020 & 0.0726, 0.0726\\
+MNIST & same, exact lattice, two seeds & 0.25 & 0.023 & 0.021 & 0.0732, 0.0716\\
+MNIST & same, SMC, 8 particles & 0.25 & 0.024 & 0.021 & 0.0705\\
+MNIST & MLP 3969-100-10 on 2nd-order scattering, AIS & 0.25 & 0.016 & 0.015 & \textbf{0.0648}\\
+Fashion & MLP 833-100-10 on Gabor, AIS / exact & 0.25 & 0.125 / 0.122 & 0.126 & 0.2207 / \textbf{0.2206}\\
+\bottomrule
+\end{tabular}
+\end{center}
+For comparison (data-free, full data, no held-out set): our DP-SGD + mutual-information certificates give $0.0695$
+(MNIST) and $0.249$ (Fashion); published MNIST certificates are $0.116$ (Lotfi et al., 2022), $0.2165$ (P\'erez-Ortiz et
+al., 2021) and $0.315$ (Garc\'ia-P\'erez et al., 2025). Pending at the time of writing: exact reruns of the scattering
+model, Fashion with scattering features, and CIFAR-10.
+
+%======================================================================
+\section{Related work and credit}\label{sec:credit}
+\paragraph{Borrowed.} The path identity is annealed importance sampling (Neal, 2001), i.e.\ the discrete-time Jarzynski
+equality (Jarzynski, 1997; Crooks, 1998), in the backward-kernel form of SMC samplers (Del Moral, Doucet and Jasra,
+2006). The SMC extension uses the particle-Gibbs extended target (Andrieu, Doucet and Holenstein, 2010). The bound is
+the disintegrated PAC-Bayes-kl bound (Blanchard and Fleuret, 2007; Catoni, 2007; Rivasplata et al., 2020; Viallard et
+al., 2024) with Maurer's (2004) inequality. Extended-space AIS log-weights already bound KL divergences, to the posterior,
+in bidirectional Monte Carlo (Grosse, Ghahramani and Adams, 2015; Grosse, Ancha and Roy, 2016). Closest in spirit,
+Maurer, Mirzaei and Pontil (2025/26) bound a sample from the exact Gibbs posterior by the temperature integral
+$\log\frac{\dd G_\beta}{\dd\pi}(h)=\int_0^\beta(\E_{G_\gamma}\hat L-\hat L(h))\,\dd\gamma$, with plug-in estimates of
+$\E_{G_\gamma}\hat L$ and a calibration fitted on random labels, on binary MNIST and CIFAR-10. Harel et al.\ (2025) bound
+Markov training by a second-law argument. The prequential quantity is classical (Dawid, 1984; Blier and Ollivier, 2018),
+and Excess Description Length (2026) studies it in expectation. Exactness borrows bit-reversible integrators (Levesque and
+Verlet, 1993) and the exact discrete Gaussian (Canonne, Kamath and Steinke, 2020); the motivation comes from Mironov
+(2012) and Jin et al.\ (2022). The features are scattering transforms (Mallat, 2012; Bruna and Mallat, 2013), used for
+certificates by Tram\`er and Boneh (2021).
+
+\paragraph{Apparently new} (quick searches only; a thorough search is still needed).
+\begin{enumerate}[nosep]
+\item Using the realised extended-space log-ratio of an AIS/SMC run as the complexity of a disintegrated PAC-Bayes bound
+  for its output, with an extended reference that may depend on $S$ because only its data-free $w_K$-marginal enters.
+  This certifies the sampler's actual output without mixing assumptions or estimated expectations.
+\item The data path (prequential charging, each point once) as that run. Corollary~\ref{cor:general}(iii) gives the certified
+  realised counterpart of the Maurer--Mirzaei--Pontil temperature integral.
+\item Bit-exact certificates through lattice HMC with exact discrete sampling (Proposition~\ref{prop:exact}).
+\item The resulting ten-class, full-data, data-free certificates.
+\end{enumerate}
+
+%======================================================================
+\section{Checklist for the reviewer}\label{sec:checklist}
+\begin{enumerate}[leftmargin=*]
+\item Theorem~\ref{thm:cert}: the reference measure $\Pt_S$ depends on $S$. Is using it only through its $w_K$-marginal
+  (and Tonelli on $P\otimes D^n$) enough? Are there measurability conditions on $S\mapsto T_k^S$ beyond
+  Assumption~\ref{as:free}?
+\item Lemma~\ref{lem:path}: the measure-form telescoping, including the atoms of Metropolis kernels.
+\item Proposition~\ref{prop:smc}: the conditional-SMC target for the resample-then-move ordering, and the exchangeability
+  argument for outputting slot 1.
+\item Proposition~\ref{prop:exact}: the involution argument (odd symmetry of $\rint$ and of float multiplication), and the
+  passage from a reversible Metropolis step on $\Z^{2d}$ to a reversible position kernel.
+\item Data-freeness of everything outside the kernels: the prior, the features (fixed filters; per-example
+  standardisation uses only the example itself), the pixel scaling (fixed), the order and the stage boundaries. The
+  Fashion file standardised with training statistics is not used.
+\item Step size $\varepsilon_k=c/\sqrt{1+\lambda\max(n_k,n_0)}$ depends only on $k$ and constants. No acceptance-rate
+  adaptation anywhere.
+\item Selection: about 25 configurations on MNIST and 3 on Fashion so far, within the declared $G=100$. Seeds are never
+  selected.
+\item Interpretation: the certified network is trained by (exact) Metropolis-adjusted HMC on a tempered posterior, not by
+  SGD.
+\end{enumerate}
+
+\begin{thebibliography}{99}\small
+\bibitem{adh} C.~Andrieu, A.~Doucet, R.~Holenstein. Particle Markov chain Monte Carlo methods. \emph{JRSS-B}, 2010.
+\bibitem{bf} G.~Blanchard, F.~Fleuret. Occam's hammer. \emph{COLT}, 2007.
+\bibitem{bo} L.~Blier, Y.~Ollivier. The description length of deep learning models. \emph{NeurIPS}, 2018.
+\bibitem{bm} J.~Bruna, S.~Mallat. Invariant scattering convolution networks. \emph{IEEE TPAMI}, 2013.
+\bibitem{cks} C.~Canonne, G.~Kamath, T.~Steinke. The discrete Gaussian for differential privacy. \emph{NeurIPS}, 2020.
+\bibitem{catoni} O.~Catoni. \emph{PAC-Bayesian supervised classification: the thermodynamics of statistical learning}. IMS, 2007.
+\bibitem{crooks} G.~Crooks. Nonequilibrium measurements of free energy differences for microscopically reversible Markovian systems. \emph{J. Stat. Phys.}, 1998.
+\bibitem{dawid} A.~P.~Dawid. Present position and potential developments: the prequential approach. \emph{JRSS-A}, 1984.
+\bibitem{ddj} P.~Del Moral, A.~Doucet, A.~Jasra. Sequential Monte Carlo samplers. \emph{JRSS-B}, 2006.
+\bibitem{gp} Garc\'ia-P\'erez et al. 2025 (data-free PAC-Bayes certificates; see \texttt{docs/literature.md}).
+\bibitem{grosse15} R.~Grosse, Z.~Ghahramani, R.~Adams. Sandwiching the marginal likelihood using bidirectional Monte Carlo. arXiv:1511.02543, 2015.
+\bibitem{grosse16} R.~Grosse, S.~Ancha, D.~Roy. Measuring the reliability of MCMC inference with bidirectional Monte Carlo. \emph{NeurIPS}, 2016.
+\bibitem{harel} I.~Harel, Y.~Wolanowsky, G.~Vardi, N.~Srebro, D.~Soudry. Temperature is all you need for generalization in Langevin dynamics and other Markov processes. arXiv:2505.19087, 2025.
+\bibitem{jarz} C.~Jarzynski. Nonequilibrium equality for free energy differences. \emph{Phys. Rev. Lett.}, 1997.
+\bibitem{jin} J.~Jin, E.~McMurtry, B.~Rubinstein, O.~Ohrimenko. Are we there yet? Timing and floating-point attacks on differential privacy systems. \emph{IEEE S\&P}, 2022.
+\bibitem{lv} D.~Levesque, L.~Verlet. Molecular dynamics and time reversibility. \emph{J. Stat. Phys.}, 1993.
+\bibitem{lotfi} S.~Lotfi et al. PAC-Bayes compression bounds so tight that they can explain generalization. \emph{NeurIPS}, 2022.
+\bibitem{mallat} S.~Mallat. Group invariant scattering. \emph{CPAM}, 2012.
+\bibitem{maurer} A.~Maurer. A note on the PAC Bayesian theorem. arXiv:cs/0411099, 2004.
+\bibitem{mmp} A.~Maurer, E.~Mirzaei, M.~Pontil. Generalization of Gibbs and Langevin Monte Carlo algorithms in the interpolation regime. arXiv:2510.06028, 2025/26.
+\bibitem{mironov} I.~Mironov. On significance of the least significant bits for differential privacy. \emph{CCS}, 2012.
+\bibitem{neal} R.~Neal. Annealed importance sampling. \emph{Statistics and Computing}, 2001.
+\bibitem{po} M.~P\'erez-Ortiz, O.~Rivasplata, J.~Shawe-Taylor, C.~Szepesv\'ari. Tighter risk certificates for neural networks. \emph{JMLR}, 2021.
+\bibitem{riva} O.~Rivasplata, I.~Kuzborskij, C.~Szepesv\'ari, J.~Shawe-Taylor. PAC-Bayes analysis beyond the usual bounds. \emph{NeurIPS}, 2020.
+\bibitem{tb} F.~Tram\`er, D.~Boneh. Differentially private learning needs better features (or much more data). \emph{ICLR}, 2021.
+\bibitem{viallard} P.~Viallard, R.~Emonet, A.~Habrard, E.~Morvant, V.~Zantedeschi. Leveraging PAC-Bayes theory and Gibbs distributions for generalization bounds with complexity measures. \emph{AISTATS}, 2024.
+\end{thebibliography}
+\end{document}

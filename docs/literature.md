@@ -233,3 +233,27 @@ Rubinstein & Ohrimenko, "Are We There Yet? Timing and Floating-Point Attacks on 
 success on DP-SGD in Opacus. Precision-based attacks and interval refining: arXiv:2207.13793. Exact discrete Gaussian:
 Canonne, Kamath & Steinke (NeurIPS 2020). Relevance: our DP-SGD certificates (§14) sample float Gaussians, so their RDP
 premise holds only for the idealised mechanism; the same applies to Gaussian PAC-Bayes posteriors sampled in float.
+
+**Grosse, Ancha & Roy (NeurIPS 2016), "Measuring the reliability of MCMC inference with bidirectional Monte Carlo"
+(BREAD), arXiv:1606.02275; Grosse, Ghahramani & Adams (2015), "Sandwiching the marginal likelihood using bidirectional
+Monte Carlo", arXiv:1511.02543.** AIS/SMC treated as importance sampling on an extended space; forward and reverse
+log-weights bound log-ML from both sides, and their gap upper-bounds (in expectation) the symmetrised KL between the
+law of the AIS sample and the posterior (rigorous only on simulated data, which needs an exact posterior sample).
+Closest relative of our "E[C] ≥ KL(law(w_K) ‖ P)" remark (§17.2): same extended-space log-weights, used there for
+a KL to the posterior, here for a realised KL-type complexity to the data-free prior inside PAC-Bayes. Must be cited.
+
+## Credit accounting for §17 (as of 2026-11-21)
+- Borrowed: path identity (Neal 2001 AIS = discrete Jarzynski; Crooks; Del Moral, Doucet & Jasra 2006 backward
+  kernels); particle Gibbs (Andrieu, Doucet & Holenstein 2010); disintegrated PAC-Bayes-kl (Blanchard & Fleuret 2007,
+  Catoni 2007, Rivasplata et al. 2020; Viallard et al. 2024); Maurer (2004); extended-space log-weights as KL bounds
+  (Grosse et al. 2015, 2016); annealing-integral bounds for Gibbs posteriors (Maurer, Mirzaei & Pontil 2025/26; Harel
+  et al. 2025); prequential codes (Dawid; Blier & Ollivier 2018; Excess Description Length 2026); PAC-Bayes and
+  marginal likelihood (Germain et al. 2016); bit-reversible integrators (Levesque & Verlet 1993); exact discrete
+  Gaussian (Canonne, Kamath & Steinke 2020); floating-point attacks (Mironov 2012; Jin et al. 2022); scattering
+  features (Mallat; Bruna & Mallat; Tramèr & Boneh 2021 for their use in certificates).
+- Apparently new (quick searches only; a thorough search is required before any claim): (1) the realised
+  extended-space log-ratio of an AIS/SMC run as the complexity in a disintegrated PAC-Bayes bound for its final sample,
+  enabled by an extended prior that may depend on S because only its data-free w_K-marginal enters (no mixing
+  assumption, no estimated expectations); (2) the data path (prequential charging, each point once) as that run;
+  (3) bit-exact certificates via lattice HMC with exact discrete sampling; (4) the resulting 10-class, full-data
+  data-free certificates (MNIST 0.0648, Fashion 0.2206).
