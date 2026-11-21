@@ -101,7 +101,8 @@ estimate is not a certificate, and the network that AIS returns is not an exact 
 \paragraph{The idea of this note.} Certify the network the sampler \emph{actually returns}, and compare the whole run,
 not just its output, with a reference process. Run a Markov chain that starts from the prior and absorbs the training
 set block by block, moving at each stage with an MCMC kernel that leaves the current partial posterior invariant.
-Compare this run with the time-reversed run that starts from the prior at the final time (Figure~\ref{fig:paths}). The
+Compare this run with the time-reversed run that starts from the prior at the final time (Figure~\ref{fig:paths}); this
+reference is an imaginary process used only in the analysis, never simulated. The
 log-density ratio between the two path distributions can be computed exactly on the realised run, and it turns out to
 be the prequential quantity above: $\lambda$ times the online loss of the run (each block scored before the chain has
 used it) minus the final training loss. PAC-Bayes on path space then gives a certificate for the single output network.
@@ -204,19 +205,54 @@ prequential view of model selection (Dawid, 1984) and the code length of prequen
 Ollivier, 2018).
 
 \subsection{Markov kernels, reversibility and Hamiltonian Monte Carlo}\label{sec:mcmc}
-A \textbf{Markov kernel} $T(x,\dd y)$ gives, for each current state $x$, a distribution for the next state. It leaves a
-distribution $\pi$ \textbf{invariant} if drawing $x\sim\pi$ and then $y\sim T(x,\cdot)$ gives $y\sim\pi$. It is
-\textbf{reversible} with respect to $\pi$ if the pair $(x,y)$ has the same distribution as the pair $(y,x)$:
-\[
-\pi(\dd x)\,T(x,\dd y)=\pi(\dd y)\,T(y,\dd x)\qquad\text{(detailed balance)}.
-\]
-Reversibility implies invariance. The definition makes equal sense for an unnormalised measure $\gamma=Z\pi$, which is
-how we use it.
+\paragraph{Markov kernels.} A \textbf{Markov kernel} $T(x,\dd y)$ is a randomised update rule: given the current state
+$x$ (here, the network's weights), it produces a random next state $y$. It is never stored as a table or a matrix; it is
+a procedure, such as ``take a noisy gradient step and accept or reject it''. A kernel leaves a distribution $\pi$
+\textbf{invariant} if, when $x\sim\pi$, the updated $y$ is again distributed as $\pi$: running the procedure does not
+change the distribution. MCMC methods sample from a complicated $\pi$ by running such a procedure many times.
 
-The \textbf{Metropolis--Hastings} recipe turns any proposal into a reversible kernel by accepting the proposed state with
-a probability chosen to enforce detailed balance; rejected proposals leave the state unchanged. \textbf{Hamiltonian Monte
-Carlo} (HMC; Neal, 2011) proposes by drawing a random momentum and simulating Hamiltonian dynamics with the leapfrog
-integrator for $L$ steps. With a Metropolis correction it is reversible with respect to its target.
+\paragraph{Reversibility.} A kernel is \textbf{reversible} with respect to $\pi$ if, at equilibrium, a step looks the
+same played forwards or backwards: drawing $x\sim\pi$ and then $y\sim T(x,\cdot)$ gives a pair $(x,y)$ with the same
+distribution as $(y,x)$. In formulas (\emph{detailed balance}),
+\[
+\pi(\dd x)\,T(x,\dd y)=\pi(\dd y)\,T(y,\dd x).
+\]
+Reversibility implies invariance (integrate over $x$). The definition is unchanged if $\pi$ is replaced by an unnormalised
+measure $\gamma=Z\pi$, which is how we use it. For us, the useful consequence is that the ratio between the probability of
+a step $x\to y$ and of the reverse step $y\to x$ is $\gamma(y)/\gamma(x)$: a quantity we can compute, even though the
+step probabilities themselves are intractable.
+
+\paragraph{How reversible kernels are built: Metropolis--Hastings.} Propose a new state $y$ by any rule that is symmetric
+(proposing $y$ from $x$ is as likely as proposing $x$ from $y$), and accept it with probability $\min\{1,\gamma(y)/\gamma(x)\}$;
+otherwise stay at $x$. The probability of moving from $x$ to $y$ is then proportional to $\min\{\gamma(x),\gamma(y)\}$,
+which is symmetric in $x$ and $y$; that is detailed balance. Reversibility is therefore not an extra assumption we
+impose: it is what the accept/reject step is designed to guarantee.
+
+\paragraph{Hamiltonian Monte Carlo (HMC).} Random proposals are useless in the millions of dimensions of a network, so
+HMC (Neal, 2011) proposes using gradients. Write the target as $\gamma(w)=e^{-U(w)}$, where $U$ is an ``energy''; for a
+tempered posterior, $U(w)=\sum_d w_d^2/(2\sigma_d^2)+\lambda L(w)$: weight decay from the Gaussian prior plus the scaled
+training loss. HMC adds a random momentum $p$, follows the dynamics of a ball rolling on the surface $U$ for a while
+using the \emph{leapfrog} integrator (alternating half-steps on $p$ and full steps on $w$), and then accepts or rejects
+the end point by comparing the total energy $H=U(w)+\frac12p^\top M^{-1}p$ before and after
+(Algorithm~\ref{alg:hmc}). Leapfrog is time-reversible (flip the final momentum and run again, and you return to the
+start) and preserves volume; together with the fresh momentum and the accept/reject step this makes each move reversible
+with respect to $\gamma$. In machine-learning terms, an HMC move is a short run of full-batch gradient descent with
+momentum and weight decay, started from a random momentum, followed by a test that rejects the run if it distorted the
+target distribution.
+
+\begin{algorithm}[h]
+\caption{One HMC move targeting $\gamma(w)=e^{-U(w)}$}\label{alg:hmc}
+\begin{algorithmic}[1]
+\Require current weights $w$; step size $\varepsilon$; number of leapfrog steps $L$; mass matrix $M$ (here the prior
+precision, $M=\mathrm{diag}(1/\sigma_d^2)$)
+\State draw a momentum $p\sim N(0,M)$; set $(w',p')\gets(w,p)$
+\For{$l=1,\dots,L$} \Comment{leapfrog: gradient descent with momentum}
+  \State $p'\gets p'-\frac{\varepsilon}2\nabla U(w')$; \quad $w'\gets w'+\varepsilon M^{-1}p'$; \quad $p'\gets p'-\frac{\varepsilon}2\nabla U(w')$
+\EndFor
+\State $H\gets U(w)+\frac12p^\top M^{-1}p$, \quad $H'\gets U(w')+\frac12p'^\top M^{-1}p'$
+\State with probability $\min\{1,e^{H-H'}\}$ \Return $w'$; otherwise \Return $w$
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{Annealed importance sampling}\label{sec:ais}
 AIS (Neal, 2001) moves from an easy distribution to a hard one through intermediate distributions
@@ -241,8 +277,9 @@ target and applies the kernels backwards. In statistical physics this is Jarzyns
 \item Block losses and partial losses: $\ell_{B_k}(w)=\sum_{i\in B_k}\ell(w,z_i)$ and $L_k(w)=\sum_{j\le k}\ell_{B_j}(w)$.
 \item Stage targets, the partial Gibbs posteriors, written unnormalised as $\gamma_0=P$ and
   $\gamma_k(\dd w)=e^{-\lambda L_k(w)}P(\dd w)$, with normalisers $Z_k$ and normalised versions $\pi_k=\gamma_k/Z_k$.
-\item For each stage a Markov kernel $T_k$ reversible with respect to $\gamma_k$. We use $10$ HMC moves of $50$ leapfrog
-  steps each, with the prior covariance as mass matrix and a step size that depends only on $k$.
+\item For each stage a Markov kernel $T_k$ reversible with respect to $\gamma_k$: $10$ HMC moves
+  (Algorithm~\ref{alg:hmc}) of $50$ leapfrog steps each, with the prior precision as mass matrix and a step size that
+  depends only on $k$. Section~\ref{sec:training} spells out what this means as a training procedure.
 \end{itemize}
 
 \begin{algorithm}[h]
@@ -263,6 +300,25 @@ for the current network and then added to the training set. The certificate char
 loss accumulated along the way, minus the loss the final network has on everything. Within a stage the chain may pass
 over the data as often as it likes at no extra cost, because the moves do not change the target.}
 
+\subsection{What training looks like in practice}\label{sec:training}
+Concretely, the run in Algorithm~\ref{alg:ais} is the following training procedure.
+\begin{enumerate}[nosep]
+\item \textbf{Initialisation from the prior.} $w_0$ is drawn from the Gaussian prior, which is a standard
+  (He-style) random initialisation. Training \emph{starts} at the prior.
+\item \textbf{Stage $k$, scoring.} The current network $w_{k-1}$, which has been trained on blocks $1,\dots,k-1$ only, is
+  evaluated on block $k$. Its summed cross-entropy $\ell_{B_k}(w_{k-1})$ is recorded. Nothing is updated.
+\item \textbf{Stage $k$, training.} The kernel $T_k$ is applied: $10$ HMC moves (Algorithm~\ref{alg:hmc}) with energy
+  $U_k(w)=\sum_dw_d^2/(2\sigma_d^2)+\lambda L_k(w)$, so every gradient is a full-batch gradient over \emph{all examples seen
+  so far}, $\nabla U_k(w)=w/\sigma^2+\lambda\sum_{i\le n_k}\nabla\ell(w,z_i)$. Each move takes $50$ leapfrog steps with step
+  size $\varepsilon_k=1.5/\sqrt{1+\lambda\max(n_k,300)}$, which shrinks as data accumulate because the posterior
+  sharpens. The step size is a fixed function of the stage, decided in advance.
+\item \textbf{Output.} After the last stage, $w_K$ is the trained network, used deterministically.
+\end{enumerate}
+In total a run takes $67\times10\times50\approx33{,}500$ gradient steps. Compared with SGD, the differences are full-batch
+gradients, data that arrive gradually, weight decay from the prior, randomness from the fresh momenta, and the
+accept/reject test. The temperature $1/\lambda$ sets the noise level: with $\lambda=0.25$ the network does not fit the
+training set as tightly as SGD would, which is the price of a small complexity term.
+
 \subsection{The key identity: forward run versus reversed run}
 Write $\Qt_S$ for the distribution of the whole run $w_{0:K}=(w_0,\dots,w_K)$ produced by Algorithm~\ref{alg:ais}:
 \[
@@ -275,6 +331,21 @@ reverse order:
 \]
 Two properties of $\Pt_S$ matter. It depends on $S$, because the kernels do. And its marginal on $w_K$ is exactly the
 data-free prior $P$, for every $S$: integrating out $w_0$, then $w_1$, and so on, leaves $P(\dd w_K)$.
+
+\paragraph{The reference process is never run.} Training is the forward process: it starts at the prior ($w_0\sim P$) and
+ends at the trained network $w_K$. The reference $\Pt_S$ is an imaginary process used only in the analysis: it would start
+from a fresh prior sample placed at the \emph{end} and apply the training kernels backwards in time. We never simulate it.
+Its role is to be a distribution over whole runs that (i) is close enough to the real run that the density ratio between
+the two is small when training goes well, and (ii) has the data-free prior as its distribution at the output, which is
+what PAC-Bayes requires of a prior.
+
+\paragraph{Why reversibility is needed.} The density ratio between the two path distributions is a product, over the
+steps, of ``probability of this step forwards'' divided by ``probability of the same step backwards''. For an HMC kernel
+these step probabilities are intractable: they involve the probability of every momentum that leads from one state to the
+other, and the probability of rejections. Reversibility (Section~\ref{sec:mcmc}) replaces each such ratio by
+$\gamma_k(\text{new state})/\gamma_k(\text{old state})$, a ratio of known functions of the losses in which the unknown
+normalisers cancel. This is the only place where the choice of kernel matters, and it is why every kernel must have a
+Metropolis--Hastings accept/reject step: without it, the forward/backward ratio would no longer be computable.
 
 \begin{figure}[t]
 \centering
@@ -401,6 +472,16 @@ It is large when the posterior is still broad and the block is big, which is why
 ($10,10,20,\dots$). Particles (Section~\ref{sec:smc}) shrink it further by charging the loss of a particle average. With
 imperfect mixing Proposition~\ref{prop:kl} still holds.}
 
+\paragraph{Is $C$ optimised?} No. Training samples the tempered posterior; it does not minimise $C$. The complexity is
+\emph{measured} on the run, a by-product of training, much as a test error is measured rather than minimised. What we do
+choose is the configuration (features, architecture, $\lambda$, stage sizes), by comparing certificates; Section~\ref{sec:select}
+accounts for this choice. The main trade-off is $\lambda$: a larger $\lambda$ makes the posterior concentrate, so the
+training error drops, but every block is charged more, so $C$ grows. Could one design kernels that drive $C$ down? Any
+kernel that is reversible for $\gamma_k$ and fixed before the run is allowed, however clever, and a kernel that learns
+faster from the first examples legitimately lowers $C$. What is not allowed is adapting the kernel along the run (for
+example, tuning the step size from the acceptance rate), because then the steps are no longer draws from fixed kernels and
+Lemma~\ref{lem:path} fails. No allowed choice can make the certificate invalid; at worst it makes it loose.
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}
@@ -454,7 +535,7 @@ Three instances:
   an open experiment.
 \end{enumerate}
 
-\subsection{Choosing among configurations}
+\subsection{Choosing among configurations}\label{sec:select}
 Hyperparameters (features, $\lambda$, architecture) are compared by their certificates on the same training set. If $G$
 configurations are tried, applying Theorem~\ref{thm:cert} to each with $\delta/G$ makes all bounds hold simultaneously.
 We fix $G=100$ per dataset in advance and count every full-data run ever made. At $n=60{,}000$ this adds
