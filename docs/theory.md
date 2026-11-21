@@ -575,56 +575,210 @@ Contraction strong enough to forget faster than you optimise is regularisation s
 optimisation time, so they buy nothing for the certificate. In the non-convex case the constants are exp(Θ(D²/s²)).
 Route closed.
 
-## 17. Prequential certificate for the final network via data-tempered AIS [ours: construction + first results]
-**Construction.** Prior P = N(0, diag) (data-free). Fix a random order of S and stage boundaries 0 = n₀ < … < n_K = n.
-Targets: γ_k(w) = P(w)·exp(−λ L_k(w)), where L_k is the cross-entropy summed over the first n_k points.
+## 17. Prequential certificate for the final network via data-tempered AIS [ours: construction, proofs, exact implementation, validity tests]
 
-Procedure: draw w₀ ~ P. At stage k, score the new block at the current sample, then apply MCMC moves reversible
-w.r.t. γ_k (Metropolis-adjusted HMC). Kernel parameters may depend on S and k, but not on the path.
+Code: `experiments/ais_cert.py` (sampler and certificate), `experiments/exact_hmc.py` (floating-point-free lattice
+version, §17.5), `experiments/ais_validity.py` (tests, §17.7). Results: `results/v2/ais_*.json`, `results/v2/ais2/`,
+`results/v2/ais_valid/`.
 
-**Extended-space prior.** P̃ = P(w_K)·Π_k T̃_k(w_k → w_{k−1}), with T̃_k the γ_k-reversal of T_k (= T_k by detailed
-balance). Telescoping gives
+### 17.1 Construction
+- Prior P: data-free (Gaussian N(0, prior_scale/fan_in) on weights, N(0, bias_var) on biases; or its lattice version).
+- Fix, independently of S, a random presentation order of the training sample S = (z_1, …, z_n) and stage boundaries
+  0 = n_0 < n_1 < … < n_K = n (here: 10, 20, 40, …, doubling, then steps of 1000).
+- Targets (unnormalised): γ_0 = P and γ_k(w) = P(w)·exp(−λ L_k(w)), where L_k(w) = Σ_{i ≤ n_k} ℓ(w, z_i) is the summed
+  cross-entropy of the first n_k points; ℓ_{B_k}(w) = L_k(w) − L_{k−1}(w) is the loss on block k.
+- Run: w_0 ~ P. For k = 1, …, K: record ℓ_{B_k}(w_{k−1}) (the new block, scored at the current network, before any
+  move uses it), then draw w_k ~ T_k(w_{k−1}, ·), where T_k is a Markov kernel reversible w.r.t. γ_k:
+  γ_k(dx) T_k(x, dy) = γ_k(dy) T_k(y, dx) as measures on pairs. Here T_k = S Metropolis-adjusted HMC moves (each
+  reversible, hence so is their composition). T_k may depend on S and on k (step size, mass matrix, even proposals
+  built from all of S), but not on the realised path (no adaptation from acceptance rates or past states).
+- Output: the single final network w_K, used deterministically.
+- Complexity: C = λ·[ Σ_{k=1}^K ℓ_{B_k}(w_{k−1}) − L_K(w_K) ]: λ × (prequential log-loss of the run − final training
+  log-loss).
 
-  ln dQ̃/dP̃ (path) = λ·[ Σ_k ℓ_{block k}(w_{k−1}) − L_K(w_K) ] =: C
+### 17.2 Path identity and the certificate
+Let Q̃_S(dw_{0:K}) = P(dw_0) Π_k T_k(w_{k−1}, dw_k) (the law of the run) and
+P̃_S(dw_{0:K}) = P(dw_K) Π_{k=K}^{1} T_k(w_k, dw_{k−1}) (start at the prior, run the kernels backwards).
 
-i.e. λ × (prequential log-loss of the realised run − final training log-loss).
+**Lemma 1 (path identity).** Q̃_S = e^{C}·P̃_S as measures; in particular Q̃_S and P̃_S are mutually absolutely
+continuous and dQ̃_S/dP̃_S = e^{C}.
 
-**Certificate.** P̃'s w_K-marginal is the data-free P, so the disintegrated PAC-Bayes-kl bound applies on path space.
-With probability ≥ 1 − δ over S and the run:
+*Proof.* Write P(dw_0) = e^{λ ℓ_{B_1}(w_0)} γ_1(dw_0) and use reversibility of T_1: γ_1(dw_0)T_1(w_0, dw_1) =
+γ_1(dw_1)T_1(w_1, dw_0). Then γ_1(dw_1) = e^{λ ℓ_{B_2}(w_1)} γ_2(dw_1), reversibility of T_2, and so on. After K
+steps, Q̃_S(dw_{0:K}) = e^{λ Σ_k ℓ_{B_k}(w_{k−1})} γ_K(dw_K) Π_k T_k(w_k, dw_{k−1}), and γ_K(dw_K) =
+e^{−λ L_K(w_K)} P(dw_K). Only the measure form of detailed balance is used, so Metropolis rejections (atoms of T_k)
+need no separate treatment. ∎
 
-  kl(err_S(w_K) ‖ err_D(w_K)) ≤ (C + ln(2√n/δ))/n
+**Theorem 2 (certificate; the extended prior may depend on S).** Let ℓ_01 be the 0-1 loss, err_S, err_D the
+empirical and true errors, n ≥ 8, δ ∈ (0, 1). With probability ≥ 1 − δ over S ~ D^n and the run,
 
-- The certified predictor is the single final network, used deterministically.
-- Data reuse inside a stage is free: invariant moves cost nothing, and each point is charged once, when it arrives.
-- The posterior reweights the prior rather than shifting it, so there is no distance-from-init penalty (unlike §13).
-- Mixing quality affects only tightness, not validity.
-- Caveat: exactness of Metropolis–Hastings in float64 (the usual numerical caveat).
+  kl( err_S(w_K) ‖ err_D(w_K) ) ≤ ( C + ln(2√n/δ) ) / n.
 
-**Related.** "Excess Description Length" (arXiv 2601.04728, Jan 2026) studies the same prequential-minus-final quantity
-for SGD-trained online learners, with bounds on *expected* generalisation. Making it a high-probability certificate
-for the final network needs the invariant-kernel / extended-space construction above.
-Other links: Germain et al. 2016 (PAC-Bayes ↔ marginal likelihood); Blier & Ollivier 2018 (prequential MDL);
-Valle-Pérez et al. 2019 (prior volume; GP-approximated, not certified); Neal 2001 (AIS).
+*Proof.* Let f_S(w) = exp(n·kl(err_S(w) ‖ err_D(w))). For every fixed w, E_S f_S(w) ≤ 2√n (Maurer 2004). Define
+φ = f_S(w_K)·e^{−C}. By Lemma 1, for every S, E_{Q̃_S}[φ] = E_{P̃_S}[f_S(w_K)]. The w_K-marginal of P̃_S is P for
+every S, so E_{P̃_S}[f_S(w_K)] = E_{w~P}[f_S(w)]. Since P does not depend on S, Fubini gives
+E_S E_{Q̃_S}[φ] = E_{w~P} E_S[f_S(w)] ≤ 2√n. Markov's inequality over the joint draw of (S, run):
+P(φ ≥ 2√n/δ) ≤ δ, and on the complement n·kl ≤ C + ln(2√n/δ). ∎
 
-**Results: MNIST, MLP 784-100-10, prior N(0, 2/fan_in), full 60k, δ = 0.025** (`experiments/ais_cert.py`,
-`results/v2/ais_mnist60k_*.json`):
+Remarks.
+- This is the disintegrated PAC-Bayes-kl bound (Rivasplata et al. 2020) on path space, with one twist a referee should
+  check: the extended prior P̃_S depends on S through the kernels. Data-freeness is used only through the
+  w_K-marginal (and Fubini), and that marginal is P for every S.
+- What may and may not depend on S: kernels (yes, any γ_k-reversible kernel), targets (yes, any S-dependent sequence
+  ending anywhere, with C the corresponding telescoped ratio), stage boundaries and order (no: they must be data-free,
+  or else be part of the randomness and enter the ratio), the prior P (no), the path (no adaptation).
+- Sanity bound: E_{Q̃_S}[C] = KL(Q̃_S ‖ P̃_S) ≥ KL(law(w_K | S) ‖ P) by data processing. So in expectation the
+  certificate is never better than ordinary disintegrated PAC-Bayes with the data-free prior P and the best possible
+  posterior, the law of w_K itself. Nothing evades the usual limits; the method makes an upper bound on that KL
+  computable for a posterior (a tempered Bayesian posterior over a network) that Gaussian variational posteriors
+  approximate badly.
+- Multiple passes over the data are free: moves inside a stage are invariant and cost nothing; each point is charged
+  once, when it arrives. No distance-from-initialisation penalty: the run reweights the prior rather than shifting it.
+- Mixing quality affects only tightness. A badly mixing chain gives a larger C, never an invalid bound.
 
-| stages | λ | train | test | prequential CE | final CE | C/n | **cert** |
-|---|---|---|---|---|---|---|---|
-| 1000-point blocks | 1 | 0.024 | 0.031 | 0.252 | 0.089 | 0.163 | 0.217 |
-| 1000-point blocks | 2 | 0.014 | 0.026 | 0.207 | 0.053 | 0.308 | 0.309 |
-| geometric 10, 20, 40, … then 1000 | 1 | 0.025 | 0.033 | 0.229 | 0.089 | 0.140 | 0.199 |
-| geometric | 0.5 | 0.038 | 0.040 | 0.304 | 0.141 | 0.082 | **0.167** |
+### 17.3 Particles (SMC with resampling)
+Resample-then-move SMC with P particles: at stage k, weights a_k^j = exp(−λ ℓ_{B_k}(w_{k−1}^j)), Ẑ_k = mean_j a_k^j,
+multinomial resampling ∝ a_k, then each particle moves by T_k. This is the particle approximation of the Feynman–Kac
+model with potentials G_k = γ_k/γ_{k−1} and mutations T_k (Del Moral 2004), whose terminal predicted measure is
+π_K = γ_K/Z_K (by invariance of T_k, induction on k), and Ẑ = Π_k Ẑ_k is unbiased for Z_K.
+- Particle-Gibbs extended target (Andrieu, Doucet & Holenstein 2010): selecting a uniformly random final particle b,
+  dQ̃/dπ̃ = Z_K/Ẑ, where π̃ has the selected particle's trajectory distributed as the Feynman–Kac path measure, whose
+  final marginal is π_K. Reweighting π̃ by P(w_b)/π_K(w_b) gives a probability measure P̃ with w_b-marginal P, and
+  C = ln dQ̃/dP̃ = −λ L_K(w_b) − ln Ẑ. With P = 1 this is Lemma 1's C.
+- Final particles are exchangeable (iid ancestors, independent moves), so slot 0 has the law of a uniformly selected
+  particle; the best of the P particles is certified with an extra ln P.
+- The online term becomes the log-loss of the particle-mixture predictive, which is always ≤ the single chain's (Jensen).
+  In practice the gain is small (8 particles: 0.1665 → 0.161 on the pixel MLP), so the exact implementation (§17.5)
+  is single-chain only.
 
-Context: our DP-SGD certificate is 0.084 (linear on features); Gaussian PAC-Bayes on a plain network 0.267; published
-data-free baselines ≈ 0.3.
+### 17.4 What has to be exact
+Lemma 1 needs T_k to be exactly reversible w.r.t. γ_k. Implemented in floating point, three things break this:
+the leapfrog integrator is not exactly time-reversible (nor volume-preserving), the Gaussian draws are not exactly
+Gaussian, and the Metropolis test uses a rounded exp. On a computer the state space is a finite grid; a proposal map
+that is not an exact bijection on it makes the true path ratio infinite on some paths rather than slightly different,
+so the error cannot be bounded by a small correction to C. Ordinary MCMC practice ignores this, since it only biases
+estimates by rounding-level amounts. A certificate, like a differential-privacy guarantee, is a claim about exact
+probability ratios. Mironov (2012) showed floating-point Laplace noise breaks DP in practice; the standard fix is exact
+discrete sampling (the discrete Gaussian of Canonne, Kamath & Steinke 2020). The same issue applies, as far as we know
+unaddressed, to every certificate that samples noise in floating point: Gaussian PAC-Bayes posteriors, DP-SGD-based
+certificates (including ours, §14), and MCMC-based ones.
 
-**Reading.** C/n is λ × the area under the log-loss learning curve minus the final training loss. The certificate is
-good exactly when the model learns fast from few examples, which is a direct, certified form of "sample efficiency
-explains generalisation".
-- More HMC compute per stage does not move it (pilots: 20× compute, same prequential CE). The posterior's
-  single-sample learning curve is the limit, not mixing.
-- Levers:
-  - architecture / prior with a faster early learning curve (CNN; data-free features);
-  - particle mixtures (SMC; the online term becomes the predictive mixture's log-loss);
-  - step size at the smallest stages (acceptance was 0 for n_k ≤ 20).
+### 17.5 Exact implementation on a lattice (`experiments/exact_hmc.py`) [ours]
+- State (i, j) ∈ Z^D × Z^D; weights w = 2^{−24}·i (exactly representable in float64), momenta p = dp_g·j.
+- Prior: product of discrete Gaussians on the lattice, P(i) ∝ exp(−Σ_d i_d²/(2σ_g²)), σ_g² = v_g·2^{48} an exact
+  rational (v_g = prior_scale/fan_in or bias_var as fractions). Sampled exactly (Canonne–Kamath–Steinke Algorithm 3,
+  big-integer arithmetic). Data-free.
+- Momentum: discrete Gaussian with integer variance 2^{24} per coordinate, sampled exactly, vectorised in int64
+  (no overflow by construction; asserted). Kinetic energy K(j) = Σ j²/2^{25}, exact rational.
+- Target at stage k: π_k(i) ∝ P(i)·exp(−λ Σ_{b ≤ k} b̂_b(i)), where b̂_b is the float64 sum (Python `math.fsum`, exactly
+  rounded) of the cross-entropies of block b, computed by one fixed call per block. Any deterministic function of i is
+  allowed here: it simply defines the target, and the same function is used in C. Energies are exact rationals
+  (float values are dyadic rationals; λ is a rational).
+- Proposal: palindromic leapfrog of integer shears j ← j − rint(h·ĝ(w)/dp) and i ← i + rint(c_g·j), then a momentum
+  flip. Each shear is exactly invertible for any deterministic ĝ; rint and the float product c_g·j are odd-symmetric;
+  so the flipped composition is an exact involution on Z^{2D} (Levesque & Verlet 1993's bit-reversible integrator).
+  The gradient ĝ need not be accurate, only deterministic.
+- Acceptance: with probability min(1, exp(d)), d = (E_0 + K_0) − (E_1 + K_1) an exact rational, via an exact
+  Bernoulli(exp(−γ)) sampler (Canonne–Kamath–Steinke Algorithm 1).
+- Then every kernel is exactly reversible w.r.t. π_k, C = λ[Σ_k b̂_k(w_{k−1}) − Σ_b b̂_b(w_K)] is an exact rational
+  (rounded upward before use), and Theorem 2 holds for the lattice network as the computer evaluates it.
+- Remaining assumptions: (i) ideal random bits (as in all DP and MCMC work); (ii) determinism: the same i gives the same
+  float bits for ĝ and b̂. (ii) is audited: at every stage all earlier block losses are recomputed and compared
+  bit-for-bit, and every 10th move is run forwards, then backwards from the flipped end point, and checked to return
+  to the start exactly.
+
+### 17.6 Selection over configurations
+Configurations are compared by their certificates on the same training set, so the reported best needs a union bound.
+Budget declared now: G = 100 configurations per dataset, counting every run ever made on it (MNIST so far: about 25 including pilots;
+Fashion: 3). Reported certificates are also given at δ/G; this costs ln(100)/n ≈ 8·10⁻⁵ at n = 60k (below the
+precision of the tables). Seeds are never selected: every seed run is reported.
+
+### 17.7 Validity tests (`experiments/ais_validity.py`, `results/v2/ais_valid/`)
+
+**(a) Path identity, brute force (`--stage identity`, tiny network).** Lemma 1 plus the marginal claim imply
+E_{run}[e^{−C} g(w_K)] = E_{w~P}[g(w)] for every g ≥ 0, in particular E[e^{−C}] = 1. Setup: MLP 2-4-3 (31 params),
+n = 8, stages {2, 4, 8}, λ = 0.3, 2 HMC moves × 5 leapfrog steps per stage, 2·10⁶ independent runs per case (SMC:
+5·10⁵ runs of 4 particles), prior truth from 4·10⁶ direct prior draws. Heavy-tailed weights bias the plain sample mean
+*down*; validity needs only the one-sided E[e^{−C} f(w_K)] ≤ E_P f, so the dangerous direction is weighted > prior.
+
+| case (c = HMC step scale) | E[e^{−C}] | reweighted L_K/n (prior 1.503) | reweighted P(err_S = 0) (prior 0.00100) | verdict |
+|---|---|---|---|---|
+| AIS, float, c = 1.2 | 0.993 | 1.477 | 0.00101 | passes (heavy-tail deficit, safe side) |
+| SMC 4 particles, float, c = 1.2 | 0.993 | 1.474 | 0.00100 | passes |
+| AIS, float, c = 2.0 | 0.998 (z = −1.3) | 1.494 (z = −1.6) | 0.00100 | passes |
+| SMC, float, c = 2.0 | 0.994 (z = −1.6) | 1.478 (z = −1.9) | 0.00100 | passes |
+| **AIS, exact lattice (§17.5), c = 1.2, 5·10⁵ runs** | **1.003 ± 0.007** | **1.509 ± 0.023** | **0.00100 ± 0.00003** | passes; 30,090 round trips, 0 failures; 0 audit failures |
+| control: Metropolis test removed, c = 1.2 | **1.60** (z = 15) | 3.62 | 0.00083 | caught |
+| control: Metropolis test removed, c = 2.0 | ∞ (weights overflow) | — | — | caught |
+| control: block scored after moving on it, c = 1.2 | **1.08** (z = 64) | 1.39 | 0.00215 | caught |
+| control: block scored after moving on it, c = 2.0 | 0.986 | 1.42 (z = −17) | **0.00134** (z = 9.4) | caught |
+
+**(b) Exact samplers (`--stage exact_unit`).** Discrete Gaussian, vectorised int64 sampler at variance 3, 50, 2²⁴
+(4·10⁵ draws each): χ² p = 0.38, 0.89, 0.48; variance/N = 0.9992, 1.0004, 1.0006. Big-integer sampler at σ² = 9/4:
+χ² p = 0.98. Exact Bernoulli(e^{−γ}): γ = 1/3: 0.714 vs 0.7165 (SE 0.003); γ = 5/2: 0.0853 vs 0.0821 (SE 0.0019).
+
+**(c) Coverage and random labels on MNIST (`--stage real`; Gabor + MLP 833-100-10, n = 1000, 20 seeds each, each seed
+a different random training subset and order).** No violations (certificate < test error) in 120 runs.
+
+| labels | λ | train | test | certificate (mean / min over 20 seeds) |
+|---|---|---|---|---|
+| true | 0.25 | 0.169 | 0.180 | 0.503 / 0.465 |
+| true | 1 | 0.051 | 0.073 | 0.563 / 0.525 |
+| true | 4 | 0.013 | 0.047 | 0.826 / 0.788 |
+| random | 0.25 | 0.879 | 0.900 | 0.961 / 0.949 |
+| random | 1 | 0.834 | 0.900 | 0.986 / 0.983 |
+| random | 4 | 0.622 | 0.900 | 1.000 / 1.000 |
+
+With random labels every classifier has true error 0.9; at λ = 4 the network fits a third of the noise (train 0.62)
+and C grows to compensate (C/n = 3.6). Full-data random-label run (n = 60k, λ = 0.25): train 0.897, test 0.897,
+certificate **0.924** ≥ 0.9.
+
+**(d) Exact vs float at full scale.** The exact lattice sampler reproduces the float results (below); 66 / 66 / 61
+stage-wise determinism audits and 67 / 67 / 62 round trips, all bit-exact; wall time ≈ 2,200 s, the same as float.
+
+### 17.8 Results (δ = 0.025; selection-adjusted values at δ/100 differ by ≤ 0.0002 and are omitted)
+
+**MNIST, full 60k, 10 classes, prior N(0, 2/fan_in), geometric stages from 10 then 1000-point blocks, 10 HMC moves × 50
+leapfrog steps per stage, ε = 1.5/√(1 + λ·max(n_k, 300)).**
+
+| model | sampler | λ | train | test | prequential CE | final CE | C/n | **cert** |
+|---|---|---|---|---|---|---|---|---|
+| MLP 784-100-10, pixels | AIS (§17 first runs, n0 = 0) | 1 | 0.024 | 0.031 | 0.252 | 0.089 | 0.163 | 0.217 |
+| MLP 784-100-10, pixels | AIS, n0 = 0 | 0.5 | 0.038 | 0.040 | 0.304 | 0.141 | 0.082 | 0.167 |
+| MLP 784-100-10, pixels | AIS, n0 = 300 | 0.5 | 0.037 | 0.043 | 0.304 | 0.139 | 0.083 | 0.1665 |
+| MLP 784-100-10, pixels | SMC, 8 particles | 0.5 | 0.039 | 0.041 | 0.294 | 0.143 | 0.076 | 0.161 |
+| linear on Gabor (8,340 params) | AIS | 0.25 / 0.5 / 1 | 0.030 / 0.026 / 0.022 | 0.027 / 0.023 / 0.020 | 0.249 / 0.186 / 0.147 | — | 0.029 / 0.040 / 0.062 | 0.091 / 0.098 / 0.116 |
+| MLP 833-100-10 on Gabor | AIS | 0.15 | 0.029 | 0.026 | 0.234 | 0.108 | 0.019 | 0.0736 |
+| MLP 833-100-10 on Gabor | AIS, seeds 0 / 1 | 0.25 | 0.023 / 0.023 | 0.020 / 0.020 | 0.184 / 0.181 | 0.087 / 0.083 | 0.024 / 0.025 | **0.0726 / 0.0726** |
+| MLP 833-100-10 on Gabor | **exact lattice**, seeds 0 / 1 | 0.25 | 0.023 / 0.023 | 0.021 / 0.021 | 0.182 / 0.180 | 0.084 / 0.086 | 0.024 / 0.024 | **0.0732 / 0.0716** |
+| MLP 833-100-10 on Gabor | AIS | 0.35 / 0.5 | 0.021 / 0.018 | 0.019 / 0.016 | 0.156 / 0.131 | 0.074 / 0.063 | 0.028 / 0.034 | 0.0738 / 0.0756 |
+| MLP 833-300-10 on Gabor | AIS | 0.25 | 0.025 | 0.024 | 0.208 | — | 0.028 | 0.080 |
+| MLP 833-100-10 on Gabor | SMC, 8 particles | 0.25 | 0.024 | 0.021 | 0.174 | — | 0.022 | 0.0705 |
+| **MLP 3969-100-10 on 2nd-order scattering** | AIS | 0.25 | 0.016 | 0.015 | 0.172 | 0.062 | 0.028 | **0.0648** |
+
+**Fashion-MNIST, raw 55k file (data-free pixel range; the 60k file is standardised with training statistics and is not
+used), MLP 833-100-10 on Gabor features.** AIS λ = 0.25: train 0.125, test 0.126, C/n 0.030, cert **0.2207**;
+λ = 0.5: 0.2336; exact lattice λ = 0.25: train 0.122, test 0.126, cert **0.2206**. Our DP-SGD + MI certificate on
+Fashion is 0.249.
+
+**CNN (pixels, conv5-16, conv5-32, linear head, 28,938 params; GPU float64).** n = 5000 pilot, λ = 0.25, c = 1.5:
+test 0.080, cert 0.307, acceptance 0–40% per stage. At 3,280 points its online CE (0.49) equals the Gabor MLP's. Not
+better so far; step-size tuning pending; a 60k run costs ≈ 9 GPU-hours.
+
+Comparison (data-free, full data, no held-out set; scoreboard artifact): MNIST — ours DP-SGD + MI on scattering 0.0695,
+Lotfi et al. 2022 0.116, Pérez-Ortiz et al. 2021 0.2165, García-Pérez et al. 2025 0.315. Fashion — ours DP-SGD 0.249.
+
+### 17.9 Reading and levers
+- C/n = λ × (area under the online log-loss curve − final training loss). The certificate is good exactly when the
+  model learns fast from few examples: a certified form of "sample efficiency explains generalisation".
+- Data-free features are the big lever (pixels 0.167 → Gabor 0.0726 → 2nd-order scattering 0.0648) because they make
+  the first few thousand points cheap. Particles (≤ 3% of C), width and λ ∈ [0.15, 0.5] are second order. More HMC
+  compute per stage does not move the prequential CE (pilots).
+- Relation to temperature annealing: Maurer, Mirzaei & Pontil (arXiv:2510.06028) bound the exact Gibbs posterior with
+  ∫₀^β (E_{G_γ}[L̂] − L̂(h)) dγ, estimated by plug-in means and calibrated. Lemma 1 applies to temperature paths too
+  (γ_k = P e^{−β_k L̂}, C = Σ_k (β_k − β_{k−1}) L̂(w_{k−1}) − β_K L̂(w_K)), giving the certified realised version of
+  their quantity. Data annealing charges each point at its first sight; temperature annealing charges every point at
+  every temperature. Head-to-head comparison: open.
+- What is certified is a network trained by exact (lattice) Metropolis-adjusted HMC on a tempered posterior, not by
+  SGD. Explaining SGD-trained networks needs either a bridge (SGD solution as proposal inside a reversible kernel,
+  allowed by §17.2) or a different argument.

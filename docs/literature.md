@@ -195,3 +195,41 @@ Method: KL as published (Dziugaite & Roy), KL/n × n (Pérez-Ortiz), inverted re
   bounds; exact in the interpolating regime.
 - Expected bounds only.
 
+
+## Sampler-based certificates and floating-point exactness (searched 2026-11-21; theory.md §17)
+
+**Maurer, Mirzaei & Pontil (2025/26), "Generalization of Gibbs and Langevin Monte Carlo Algorithms in the
+Interpolation Regime", arXiv:2510.06028 (v3, May 2026).** Closest prior work to §17.
+- Disintegrated PAC-Bayes for one draw h from a data-dependent ν(x) (their Thm 2.1, eq. 2; bounded loss).
+- Gibbs posterior G_β: ln dG_β/dπ(h) = ∫₀^β (E_{G_γ}[L̂] − L̂(h)) dγ (their Lemma 3.1): thermodynamic integration over
+  *temperature*. Our §17 C is the realised, data-annealed counterpart (prequential sum over data blocks), exact for the
+  actual run.
+- LMC/ULA: covered in theory up to KL/TV/W2 convergence terms (LSI, Hessian bounds; Vempala–Wibisono discretisation),
+  which are not computed in the experiments; E_{G_γ}[L̂] is a plug-in running mean along one chain (no concentration);
+  reported bounds use a per-setting multiplier (0.08–0.89) calibrated so random-label bounds reach chance.
+- Experiments: binary MNIST (0–4 vs 5–9), binary CIFAR-10, SVHN; n = 2000 or 8000; δ = 0.01; data-free Gaussian prior
+  (σ = 5). MNIST 8k, β = 64k: test bound 0.0860 (2HL FC), 0.1314 (3HL), 0.0375 (LeNet-5) vs test error 0.0498 /
+  0.0549 / 0.0317. Not certificates in our sense (uncertified estimates, calibration, mixing assumed); not comparable
+  with our 10-class, full-data numbers.
+
+**Harel, Wolanowsky, Vardi, Srebro & Soudry (2025), "Temperature is All You Need for Generalization in Langevin Dynamics
+and other Markov Processes", arXiv:2505.19087.** Second-law argument: for a Markov process started at the prior with
+Gibbs stationary law, KL(ν_t ‖ π) ≤ β E_π[L̂] along the whole trajectory; data-free, vacuous for β > n. Our C replaces
+β E_π[L̂] (the prior's loss on all n points at once) by the prequential loss of the run.
+
+**Viallard et al. (AISTATS 2024), "Leveraging PAC-Bayes Theory and Gibbs Distributions for Generalization Bounds with
+Complexity Measures", arXiv:2402.13285.** Disintegrated bounds with Gibbs posteriors over arbitrary complexity
+measures; related framing, no realised-path ratio.
+
+**Bit-reversible integrators.** Levesque & Verlet (1993, J. Stat. Phys. 72:519) "Molecular dynamics and time
+reversibility": positions stored as integers, forces rounded onto the grid, exactly reversible. Follow-ups: JANUS
+(Rein & Tamayo 2017, arXiv:1704.07715); exact bitwise reversible integrator (NVIDIA 2022, arXiv:2207.07695). We found no
+use of such integrators to make an MCMC kernel exactly reversible for a certificate (§17.5 looks new; search was
+quick).
+
+**Floating-point exactness in DP.** Mironov (2012, CCS) broke floating-point Laplace mechanisms. Jin, McMurtry,
+Rubinstein & Ohrimenko, "Are We There Yet? Timing and Floating-Point Attacks on Differential Privacy Systems"
+(arXiv:2112.05307, IEEE S&P 2022): the Gaussian samplers of NumPy, PyTorch and Go are vulnerable; up to 92.56% attack
+success on DP-SGD in Opacus. Precision-based attacks and interval refining: arXiv:2207.13793. Exact discrete Gaussian:
+Canonne, Kamath & Steinke (NeurIPS 2020). Relevance: our DP-SGD certificates (§14) sample float Gaussians, so their RDP
+premise holds only for the idealised mechanism; the same applies to Gaussian PAC-Bayes posteriors sampled in float.

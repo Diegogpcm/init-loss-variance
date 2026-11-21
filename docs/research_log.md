@@ -239,6 +239,42 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
     - The limit is the single-sample learning curve, not MCMC compute.
     - Closest prior work: Excess Description Length (arXiv 2601.04728), in expectation only and for SGD.
 
+## 2026-11-21
+
+36. **AIS certificate: features, particles, validity, exactness (author: "get working on it"; "results look almost too
+    good to be true ... check the validity of the math"; "will you figure out a way to bound the effect of [floating
+    point]?").** theory.md §17.1–17.9, literature.md "Sampler-based certificates and floating-point exactness".
+    - Levers, full 60k MNIST: pixels 0.167 → Gabor + MLP 0.0726 (two seeds, both 0.0726) → second-order scattering +
+      MLP **0.0648** (test 0.015), below our DP-SGD best (0.0695). Fashion: **0.2207** (test 0.126), below DP-SGD's 0.249.
+      SMC particles ≤ 3% of C; width 300 worse; λ ∈ [0.15, 0.5] flat.
+    - Proof written out (Lemma 1 path identity; Theorem 2). The point a referee will check: the extended prior depends
+      on S through the kernels; only its w_K-marginal, which is the data-free P, enters. Sanity bound
+      E[C] ≥ KL(law(w_K | S) ‖ P): no evasion of ordinary PAC-Bayes.
+    - Tests (all pass): brute-force identity E[e^{−C} g(w_K)] = E_P g on a tiny net (2·10⁶ runs; AIS and SMC); negative
+      controls (Metropolis test removed; block scored after training on it) are caught decisively; 120 coverage runs at
+      n = 1000 with no violation; random labels never certified below 0.9 (min 0.949 at n = 1000; 0.924 at 60k).
+    - Floating point: cannot be "bounded" (a non-bijective step makes the path ratio infinite, not slightly off), so
+      removed: `experiments/exact_hmc.py`, lattice HMC with integer-shear leapfrog (exact involution), exact discrete
+      Gaussians (Canonne–Kamath–Steinke) for prior and momenta, exact rational energies, exact Bernoulli acceptance;
+      determinism audited. Exact identity test: E[e^{−C}] = 1.003 ± 0.007 (5·10⁵ chains, 30,090 round trips, 0
+      failures). Exact 60k runs: MNIST 0.0732 / 0.0716 (two seeds), Fashion 0.2206; same wall time as float.
+    - Literature (search): closest is Maurer, Mirzaei & Pontil (arXiv:2510.06028), temperature-integral bounds for the
+      exact Gibbs posterior, with plug-in estimates and a per-setting calibration, on binary MNIST at n = 8k; Harel et
+      al. 2025 (second law). Bit-reversible integrators are known (Levesque & Verlet 1993); using them for exact
+      certificates looks new. Floating-point attacks on DP-SGD are documented (Jin et al. 2022), so the exactness point
+      also applies to our §14 certificates.
+    - CNN (pixels, 29k params, GPU float64): n = 5000 pilot not better than Gabor + MLP; acceptance low, step tuning
+      running; 60k ≈ 9 GPU-hours.
+    - Infrastructure: `ais_cert.py` refactored (one `sampler` for runs and tests; `--arch cnn`, `--random_labels`,
+      `--exact`); a wifi drop removed the web tools mid-session; they came back with the connection.
+
+## Next steps (as of 2026-11-21, after entry 36)
+- AIS certificate (§17): (a) an independent read of the proof of Theorem 2 by the author or a colleague; (b) exact
+  lattice rerun of the scattering run (0.0648) and of every reported headline number; (c) data vs temperature
+  annealing head to head (§17.9); (d) CNN after step tuning; CIFAR-10 with scattering features; (e) exact (discrete)
+  noise for the DP-SGD certificates (§14), since float Gaussian noise does not satisfy the RDP premise exactly;
+  (f) bridge to SGD: an SGD-trained network as a proposal inside a reversible kernel (allowed by Theorem 2).
+
 ## Next steps (as of 2026-11-20, updated after entry 32)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
