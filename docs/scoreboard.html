@@ -1,0 +1,250 @@
+<title>Certificate Scoreboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: one reading column; per dataset a dot strip (certificate vs test error) above a sortable-looking plain table */
+:root {
+  --bg: #f7f8f9; --panel: #ffffff; --fg: #15191d; --fg2: #50585f; --muted: #7d858c; --rule: #dde1e5;
+  --ours: #2a78d6; --pub: #eb6834; --test: #7d858c; --best: #e9f1fb; --pending: #fff4e0;
+  --f-display: "Fraunces", Georgia, serif; --f-body: "IBM Plex Sans", system-ui, sans-serif; --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121518; --panel: #1a1e22; --fg: #eef0f2; --fg2: #b9c0c6; --muted: #8c949b; --rule: #2d3338;
+  --ours: #3987e5; --pub: #d95926; --test: #a3aab0; --best: #1c2a3b; --pending: #33281a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121518; --panel: #1a1e22; --fg: #eef0f2; --fg2: #b9c0c6; --muted: #8c949b; --rule: #2d3338;
+  --ours: #3987e5; --pub: #d95926; --test: #a3aab0; --best: #1c2a3b; --pending: #33281a; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+main { max-width: 1040px; margin: 0 auto; display: grid; gap: 40px; }
+h1 { font: 600 2.1rem/1.15 var(--f-display); margin: 0 0 8px; text-wrap: balance; }
+h2 { font: 600 1.45rem/1.2 var(--f-display); margin: 0; text-wrap: balance; }
+h3 { font: 600 0.78rem/1.2 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--fg2); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--fg2); }
+code, .mono { font-family: var(--f-mono); font-size: .86em; }
+section { display: grid; gap: 16px; }
+.head { display: grid; gap: 6px; }
+.keyline { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--fg2); font-size: .88rem; }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ring { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--test); display: inline-block; box-sizing: border-box; }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; min-width: 0; }
+.chart { overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.chart text { font-family: var(--f-body); fill: var(--fg2); font-size: 12px; }
+.chart .lbl { fill: var(--fg); font-size: 12.5px; }
+.chart .num { font-family: var(--f-mono); font-size: 11.5px; fill: var(--fg); }
+.chart .grid { stroke: var(--rule); stroke-width: 1; }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .hit:hover, .chart .hit:focus { fill: var(--best); outline: none; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: .9rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-weight: 600; color: var(--fg2); font-size: .78rem; letter-spacing: .05em; text-transform: uppercase; }
+td.n { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+th.n { text-align: right; }
+tr.best td { background: var(--best); }
+tr.pending td { background: var(--pending); }
+.tag { display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .04em; padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
+.tag.ours { color: var(--ours); border: 1px solid var(--ours); }
+.tag.pub { color: var(--pub); border: 1px solid var(--pub); }
+.tag.ref { color: var(--muted); border: 1px solid var(--muted); }
+.src { color: var(--muted); font-size: .8rem; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.cols > div { min-width: 0; display: grid; gap: 8px; align-content: start; }
+ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+#tip { position: fixed; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 8px 10px; font-size: .82rem; max-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,.12); z-index: 20; }
+@media (prefers-reduced-motion: no-preference) { .chart .hit { transition: fill .12s; } }
+</style>
+
+<main>
+  <header class="head">
+    <h1>Certificate scoreboard</h1>
+    <p class="lede">Every generalisation certificate we have attained so far on branch <code>v2-accuracy-variance-and-pacbayes</code>, next to the best published certificates under the same rules: data-free prior, no held-out data, standard test set, confidence 1 − δ with δ = 0.025 for ours. Lower is better. A certificate is an upper bound on the true test error that holds with high probability; the test error is shown for scale.</p>
+    <div class="keyline" aria-hidden="true">
+      <span class="key"><span class="dot" style="background:var(--ours)"></span>Our certificate</span>
+      <span class="key"><span class="dot" style="background:var(--pub)"></span>Published certificate</span>
+      <span class="key"><span class="ring"></span>Test error of the certified model (ours)</span>
+    </div>
+  </header>
+
+  <section id="mnist" aria-labelledby="h-mnist">
+    <div class="head"><h2 id="h-mnist">MNIST, n = 60,000</h2>
+      <p class="lede">Best data-free result we know of: <strong>0.0648</strong>, the prequential AIS certificate on second-order scattering features (test error 0.015). With Gabor features it gives 0.0726 on both seeds, and the floating-point-free exact sampler reproduces that (0.0732 and 0.0716). Our earlier best was 0.0695 (DP-SGD + mutual information).</p></div>
+    <div class="panel chart" data-chart="mnist"></div>
+    <div class="tablewrap" data-table="mnist"></div>
+  </section>
+
+  <section id="fashion" aria-labelledby="h-fashion">
+    <div class="head"><h2 id="h-fashion">Fashion-MNIST, n = 55,000</h2>
+      <p class="lede">We know of no published full-data, data-free, 10-class Fashion certificate to compare against; Valle-Pérez et al. (2019) report 0.175–0.188 on a binarised 10k subset, which is not comparable. The prequential AIS certificate gives <strong>0.2206</strong> with the exact sampler (test error 0.126), ahead of our DP-SGD 0.249.</p></div>
+    <div class="panel chart" data-chart="fashion"></div>
+    <div class="tablewrap" data-table="fashion"></div>
+  </section>
+
+  <section id="cifar" aria-labelledby="h-cifar">
+    <div class="head"><h2 id="h-cifar">CIFAR-10, n = 50,000</h2>
+      <p class="lede">Ours ties the best published data-free certificate (Lampert, Cairney-Leeming &amp; Zakerinia 2026, 0.716 ± 0.007) and beats García-Pérez et al. 2025 (0.738), using first-order Gabor features with no tuning on CIFAR. The AIS method has not been run on CIFAR yet.</p></div>
+    <div class="panel chart" data-chart="cifar"></div>
+    <div class="tablewrap" data-table="cifar"></div>
+  </section>
+
+  <section aria-labelledby="h-valid">
+    <div class="head"><h2 id="h-valid">Checks on the AIS certificate</h2>
+      <p class="lede">The proof is in theory.md §17.2 and still needs an independent read. Every test so far passes, and every deliberately broken variant is caught.</p></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Test</th><th>What a valid certificate must show</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Path identity, tiny network, 2·10⁶ runs (AIS and SMC)</td><td>Reweighted runs reproduce the prior: E[e<sup>−C</sup>] = 1</td><td class="mono">0.993–0.998, |z| ≤ 1.9 (heavy-tail deficit, safe side)</td></tr>
+        <tr><td>Same, exact lattice sampler, 5·10⁵ chains</td><td>Same</td><td class="mono">1.003 ± 0.007; 30,090 round trips, 0 failures</td></tr>
+        <tr><td>Control: Metropolis test removed</td><td>Must fail</td><td class="mono">1.60 (z = 15) or overflow: caught</td></tr>
+        <tr><td>Control: block scored after training on it</td><td>Must fail</td><td class="mono">1.08 (z = 64): caught</td></tr>
+        <tr><td>Coverage, MNIST n = 1000, 60 runs, λ ∈ {0.25, 1, 4}</td><td>Certificate ≥ test error</td><td class="mono">0 violations</td></tr>
+        <tr><td>Random labels, n = 1000 (60 runs) and n = 60,000</td><td>Certificate ≥ 0.9 (every classifier's true error)</td><td class="mono">min 0.949; 0.924 at 60k</td></tr>
+        <tr><td>Exact vs floating-point sampler, full data</td><td>Same certificates</td><td class="mono">MNIST 0.0732 / 0.0716 vs 0.0726; Fashion 0.2206 vs 0.2207</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-neg">
+    <div class="head"><h2 id="h-neg">Routes tried that did not improve a certificate</h2></div>
+    <div class="panel">
+      <ul>
+        <li><strong>Structured multi-epoch tail</strong> for DP-SGD (theory.md §14.2): worth at most 0.008 at the measured gradient diversity; dropped.</li>
+        <li><strong>Individual (Rényi-filter) privacy accounting</strong> (§14.3): no gain; the filter drops misclassified points first.</li>
+        <li><strong>Chaos as self-generated noise</strong> (§15.4, Fashion): fixed and random seeds give the same function-space information. Explanatory, not a certificate.</li>
+        <li><strong>Time-uniform information via contraction</strong> (Altschuler–Talwar, §16): best Fashion certificate 0.321 against 0.249; forgetting time equals optimisation time.</li>
+        <li><strong>SMC particles for the AIS certificate</strong> (§17): 8 particles help by at most 3% (0.1665 → 0.161 on pixels, 0.0726 → 0.0705 on Gabor features).</li>
+        <li><strong>Wider head</strong> (300 units on Gabor features): 0.080 against 0.0726.</li>
+        <li><strong>CNN on pixels under HMC</strong> (n = 5000 pilots): learns no faster than the Gabor MLP; step-size tuning still running.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-where">
+    <div class="head"><h2 id="h-where">Where everything lives</h2></div>
+    <div class="cols">
+      <div class="panel"><h3>Write-ups</h3>
+        <ul>
+          <li><code>README.md</code>: summary tables for the DP-SGD route</li>
+          <li><code>docs/theory.md</code>: derivations; §14 DP-SGD + MI, §16 contraction, §17 AIS certificate (proof, exactness, validity tests)</li>
+          <li><code>docs/research_log.md</code>: dated log of every attempt (entries 1–36)</li>
+          <li><code>docs/literature.md</code>: published numbers and what each paper proves</li>
+          <li><code>results/v2/dp_summary.md</code>: DP-SGD tables for all three datasets</li>
+        </ul></div>
+      <div class="panel"><h3>Code</h3>
+        <ul>
+          <li><code>experiments/dp_sgd_bound.py</code>, <code>tail_bounds.py</code>: DP-SGD certificate</li>
+          <li><code>experiments/ais_cert.py</code>: prequential AIS / SMC certificate</li>
+          <li><code>experiments/exact_hmc.py</code>: floating-point-free lattice sampler</li>
+          <li><code>experiments/ais_validity.py</code>: validity tests</li>
+          <li><code>experiments/contractive_dp.py</code>, <code>pabi_account.py</code>: contraction route</li>
+          <li><code>experiments/chaos_cmi.py</code>: chaos / CMI experiment</li>
+        </ul></div>
+      <div class="panel"><h3>Raw results</h3>
+        <ul>
+          <li><code>results/v2/*.json, *.jsonl</code>: one record per run</li>
+          <li><code>results/v2/ais2/</code>: AIS runs with data-free features</li>
+          <li><code>results/v2/ais_valid/</code>: validity tests (identity, coverage, random labels) and exact-sampler runs</li>
+        </ul></div>
+    </div>
+  </section>
+</main>
+<div id="tip" hidden></div>
+
+<script>
+// kind: ours | pub | ref (not comparable / uses held-out data). status: pending rows have no number yet.
+const DATA = {
+  mnist: { lo: 0, hi: 0.36, ticks: [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35], rows: [
+    { k: "ours", best: true, name: "Prequential AIS, 2nd-order scattering + MLP, λ = 0.25", model: "MLP 3969-100-10 on data-free scattering features (398k params)", pred: "the final network, deterministic", test: 0.0152, cert: 0.0648, src: "theory.md §17.8; results/v2/ais2/gab2_mlp_lam0.25.json (1 seed; exact rerun pending)" },
+    { k: "ours", name: "DP-SGD + MI, 2nd-order scattering, linear", model: "linear softmax on data-free scattering features", pred: "the trained network", test: 0.041, cert: 0.0695, pm: 0.005, src: "theory.md §14.1; results/v2/dp_scatter_transfer_mnist.jsonl (3 seeds)" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, 8 SMC particles", model: "MLP 833-100-10 on Gabor features", pred: "one particle (final network)", test: 0.0213, cert: 0.0705, src: "results/v2/ais2/gab_mlp_lam0.25_P8.json" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, exact lattice sampler, seed 1", model: "MLP 833-100-10 on Gabor features; floating-point-free (§17.5)", pred: "the final network", test: 0.0209, cert: 0.0716, src: "results/v2/ais_valid/exact_mnist_gab_mlp_lam0.25_s1.json" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, λ = 0.25 (seeds 0 and 1)", model: "MLP 833-100-10 on data-free Gabor features (84k params)", pred: "the final network, deterministic", test: 0.0201, cert: 0.0726, src: "§17.8; results/v2/ais2/gab_mlp_lam0.25{,_s1}.json; both seeds 0.0726" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, exact lattice sampler, seed 0", model: "MLP 833-100-10 on Gabor features; floating-point-free (§17.5)", pred: "the final network", test: 0.0214, cert: 0.0732, src: "results/v2/ais_valid/exact_mnist_gab_mlp_lam0.25_s0.json" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, λ = 0.5", model: "MLP 833-100-10 on Gabor features", pred: "the final network", test: 0.016, cert: 0.0756, src: "results/v2/ais2/gab_mlp_lam0.5.json" },
+    { k: "ours", name: "DP-SGD + MI, Gabor, linear (recipe A), Thm 8 tail", model: "linear softmax on Gabor features (8,340 params)", pred: "the trained network", test: 0.058, cert: 0.084, pm: 0.005, src: "§14.1; dp_transfer_mnist_A.jsonl (3 seeds)" },
+    { k: "ours", name: "Prequential AIS, Gabor, linear, λ = 0.25", model: "linear softmax on Gabor features", pred: "the final network", test: 0.0265, cert: 0.0907, src: "results/v2/ais2/gab_lin_lam0.25.json" },
+    { k: "ours", name: "DP-SGD + MI, Gabor, linear, Markov tail", model: "same as recipe A", pred: "the trained network", test: 0.058, cert: 0.099, pm: 0.004, src: "§14; research_log entry 25" },
+    { k: "pub", name: "Lotfi et al. 2022, compression prior", model: "compressed model (~380 bytes)", pred: "the compressed network", cert: 0.116, src: "literature.md (as reported)" },
+    { k: "ours", name: "Prequential AIS, pixels, MLP, 8 SMC particles, λ = 0.5", model: "MLP 784-100-10 on pixels", pred: "one particle (final network)", test: 0.0406, cert: 0.161, src: "results/v2/ais2/pix_mlp_lam0.5_P8.json" },
+    { k: "ours", name: "Prequential AIS, pixels, MLP, λ = 0.5", model: "MLP 784-100-10 on pixels", pred: "the final network", test: 0.040, cert: 0.167, src: "§17; ais_mnist60k_geo_lam0.5.json" },
+    { k: "pub", name: "Pérez-Ortiz et al. 2021, random-init prior", model: "CNN", pred: "Gibbs (stochastic)", cert: 0.2165, src: "literature.md (as reported)" },
+    { k: "ours", name: "Gaussian PAC-Bayes, bn_stat + inv KL + klinv01", model: "MLP 784-64-64-10 with BN statistics", pred: "Gibbs (stochastic)", test: 0.067, cert: 0.228, pm: 0.002, src: "research_log entries 21–26" },
+    { k: "pub", name: "Lampert, Cairney-Leeming & Zakerinia 2026 v2, posterior", model: "MLP, DP-SGD prior + Gaussian posterior", pred: "Gibbs (stochastic)", cert: 0.233, src: "README.md (as reported)" },
+    { k: "pub", name: "Lampert, Cairney-Leeming & Zakerinia 2026 v2, network", model: "MLP, DP-SGD prior", pred: "the network", cert: 0.248, src: "README.md (as reported)" },
+    { k: "ours", name: "Gaussian PAC-Bayes, plain network", model: "MLP 784-64-64-10", pred: "Gibbs (stochastic)", test: 0.080, cert: 0.267, pm: 0.004, src: "dp_summary.md" },
+    { k: "pub", name: "García-Pérez et al. 2025, best data-free", model: "MLP 3×600, KL-modulated", pred: "Gibbs (stochastic)", cert: 0.315, src: "paper HTML, verified (entry 26)" },
+    { k: "pub", name: "Pérez-Ortiz et al. 2021, FCN", model: "FCN", pred: "Gibbs (stochastic)", cert: 0.32, src: "literature.md (approximate)" },
+    { k: "ref", name: "Maurer, Mirzaei & Pontil 2025/26, Gibbs / Langevin bound", model: "LeNet-5, binary MNIST (0–4 vs 5–9), n = 8k; calibrated, not certified", pred: "one Langevin sample", cert: 0.0375, src: "arXiv:2510.06028 Table 2; not comparable" },
+    { k: "ref", name: "Pérez-Ortiz et al. 2021, prior learned on half the data", model: "CNN; uses a data split, so not data-free", pred: "Gibbs (stochastic)", cert: 0.0155, src: "literature.md; for reference only" },
+  ]},
+  fashion: { lo: 0, hi: 0.4, ticks: [0, 0.1, 0.2, 0.3, 0.4], rows: [
+    { k: "ours", best: true, name: "Prequential AIS, Gabor + MLP, exact lattice sampler, λ = 0.25", model: "MLP 833-100-10 on Gabor features; floating-point-free", pred: "the final network", test: 0.1256, cert: 0.2206, src: "results/v2/ais_valid/exact_fashion_gab_mlp_lam0.25_s0.json" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, λ = 0.25", model: "MLP 833-100-10 on Gabor features", pred: "the final network", test: 0.1256, cert: 0.2207, src: "results/v2/ais2/fa_gab_mlp_lam0.25.json" },
+    { k: "ours", name: "Prequential AIS, Gabor + MLP, λ = 0.5", model: "MLP 833-100-10 on Gabor features", pred: "the final network", test: 0.1106, cert: 0.2336, src: "results/v2/ais2/fa_gab_mlp_lam0.5.json" },
+    { k: "ours", name: "DP-SGD + MI, Gabor, linear (recipe A), Thm 8 tail", model: "linear softmax on Gabor features", pred: "the trained network", test: 0.210, cert: 0.249, pm: 0.003, src: "§14.1; dp_transfer_fashion_A.jsonl (3 seeds)" },
+    { k: "ours", name: "DP-SGD + MI, Gabor, linear, Markov tail", model: "same", pred: "the trained network", test: 0.210, cert: 0.273, pm: 0.003, src: "§14" },
+    { k: "ours", name: "Contractive noisy SGD, time-uniform information", model: "linear softmax on Gabor features", pred: "the final iterate", cert: 0.321, src: "§16; cdp_grid_fashion.jsonl" },
+    { k: "ours", name: "Gaussian PAC-Bayes, bn_stat + inv KL + klinv01", model: "MLP with BN statistics", pred: "Gibbs (stochastic)", cert: 0.347, pm: 0.001, src: "research_log entry 21" },
+    { k: "ref", name: "Valle-Pérez et al. 2019, NNGP marginal likelihood", model: "binarised labels, 10k subset; not comparable", pred: "all zero-error functions", cert: 0.175, src: "literature.md; for reference only" },
+  ]},
+  cifar: { lo: 0.6, hi: 0.9, ticks: [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9], rows: [
+    { k: "ours", best: true, name: "DP-SGD + MI, Gabor, linear (recipe A), Thm 8 tail", model: "linear softmax on Gabor features (32,650 params)", pred: "the trained network", test: 0.675, cert: 0.715, pm: 0.006, src: "§14.1; dp_transfer_cifar10_A.jsonl (3 seeds)" },
+    { k: "pub", best: true, name: "Lampert, Cairney-Leeming & Zakerinia 2026 v2, best", model: "4-layer CNN, DP-SGD prior + posterior", pred: "Gibbs (stochastic)", cert: 0.716, pm: 0.007, src: "README.md (as reported)" },
+    { k: "pub", name: "García-Pérez et al. 2025, best data-free", model: "4-layer CNN (9,946 params)", pred: "Gibbs (stochastic)", cert: 0.738, pm: 0.007, src: "paper HTML, verified (entry 26)" },
+    { k: "ours", name: "DP-SGD + MI, Gabor, linear, Markov tail", model: "same as recipe A", pred: "the trained network", test: 0.675, cert: 0.740, pm: 0.005, src: "§14" },
+    { k: "ours", name: "DP-SGD + MI, Gabor + MLP (recipe B)", model: "1-hidden-layer MLP on Gabor features", pred: "the trained network", test: 0.715, cert: 0.761, pm: 0.006, src: "dp_summary.md" },
+  ]},
+};
+const KIND = { ours: ["ours", "Ours"], pub: ["pub", "Published"], ref: ["ref", "Reference"], pending: ["ref", "Running"] };
+const f3 = v => v == null ? "—" : (v < 0.1 ? v.toFixed(4) : v.toFixed(3)).replace(/0+$/, "").replace(/\.$/, "");
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+function chart(id) {
+  const d = DATA[id], rows = d.rows.filter(r => r.cert != null && r.k !== "ref");
+  const W = 1000, L = 380, R = 60, rowH = 26, top = 8, H = top + rows.length * rowH + 30;
+  const x = v => L + (v - d.lo) / (d.hi - d.lo) * (W - L - R);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${id} certificates, lower is better">`;
+  d.ticks.forEach(t => { s += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${H - 24}"/><text x="${x(t)}" y="${H - 8}" text-anchor="middle">${t}</text>`; });
+  rows.forEach((r, i) => {
+    const y = top + i * rowH + rowH / 2, col = r.k === "ours" ? "var(--ours)" : "var(--pub)";
+    s += `<rect class="hit" tabindex="0" data-c="${id}" data-i="${d.rows.indexOf(r)}" x="0" y="${y - rowH / 2}" width="${W}" height="${rowH}" rx="4"/>`;
+    s += `<text class="lbl" x="${L - 14}" y="${y + 4}" text-anchor="end" pointer-events="none">${esc(r.name.length > 52 ? r.name.slice(0, 51) + "…" : r.name)}</text>`;
+    if (r.test != null) s += `<line x1="${x(r.test)}" x2="${x(r.cert)}" y1="${y}" y2="${y}" stroke="var(--rule)" stroke-width="2" pointer-events="none"/><circle cx="${x(r.test)}" cy="${y}" r="4.5" fill="var(--panel)" stroke="var(--test)" stroke-width="2" pointer-events="none"/>`;
+    if (r.pm) s += `<line x1="${x(r.cert - r.pm)}" x2="${x(r.cert + r.pm)}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="2" pointer-events="none"/>`;
+    s += `<circle cx="${x(r.cert)}" cy="${y}" r="6" fill="${col}" stroke="var(--panel)" stroke-width="2" pointer-events="none"/>`;
+    s += `<text class="num" x="${x(r.cert) + 12}" y="${y + 4}" pointer-events="none">${f3(r.cert)}</text>`;
+  });
+  return s + `</svg>`;
+}
+function table(id) {
+  let h = `<table><thead><tr><th>Method</th><th>Source</th><th>Model</th><th>Certified predictor</th><th class="n">Test error</th><th class="n">Certificate</th><th>Where</th></tr></thead><tbody>`;
+  DATA[id].rows.forEach(r => {
+    const [cls, lab] = KIND[r.k];
+    h += `<tr class="${r.best ? "best" : ""} ${r.k === "pending" ? "pending" : ""}"><td>${esc(r.name)}</td><td><span class="tag ${cls}">${lab}</span></td><td>${esc(r.model)}</td><td>${esc(r.pred)}</td>
+      <td class="n">${f3(r.test)}</td><td class="n"><strong>${f3(r.cert)}</strong>${r.pm ? ` ± ${r.pm}` : ""}</td><td class="src">${esc(r.src)}</td></tr>`;
+  });
+  return h + `</tbody></table>`;
+}
+document.querySelectorAll("[data-chart]").forEach(el => el.innerHTML = chart(el.dataset.chart));
+document.querySelectorAll("[data-table]").forEach(el => el.innerHTML = table(el.dataset.table));
+const tip = document.getElementById("tip");
+function show(e, el) {
+  const r = DATA[el.dataset.c].rows[+el.dataset.i];
+  tip.innerHTML = `<strong>${esc(r.name)}</strong><br>${esc(r.model)}<br>Certificate <span class="mono">${f3(r.cert)}${r.pm ? " ± " + r.pm : ""}</span>${r.test != null ? ` · test error <span class="mono">${f3(r.test)}</span>` : ""}<br><span class="src">${esc(r.src)}</span>`;
+  tip.hidden = false;
+  const b = e.clientX != null ? { x: e.clientX, y: e.clientY } : (() => { const q = el.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top }; })();
+  tip.style.left = Math.min(b.x + 14, innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = Math.max(8, b.y - tip.offsetHeight - 10) + "px";
+}
+document.querySelectorAll(".hit").forEach(el => {
+  el.addEventListener("mousemove", e => show(e, el));
+  el.addEventListener("focus", e => show({}, el));
+  el.addEventListener("mouseleave", () => tip.hidden = true);
+  el.addEventListener("blur", () => tip.hidden = true);
+});
+</script>
