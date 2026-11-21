@@ -635,6 +635,11 @@ Remarks.
 - Multiple passes over the data are free: moves inside a stage are invariant and cost nothing; each point is charged
   once, when it arrives. No distance-from-initialisation penalty: the run reweights the prior rather than shifting it.
 - Mixing quality affects only tightness. A badly mixing chain gives a larger C, never an invalid bound.
+- Reversibility is sufficient, not necessary: any γ_k-invariant kernel works, with its time reversal T_k* as the backward
+  kernel of the (never simulated) reference; more generally any backward kernels with evaluable transition densities
+  (SMC-sampler backward-kernel formalism) give C = log P(w_0)/P(w_K) + Σ_k log t_k(w_{k-1}→w_k)/r_k(w_k→w_{k-1}).
+  Plain SGD is neither invariant (it contracts volume) nor reversible (descent steps cannot be undone; the reverse step
+  has probability zero). Note §3.4–3.5 (docs/note) has the details and a proof that HMC moves are reversible.
 - Credit: Lemma 1 is the AIS / discrete-Jarzynski identity (Neal 2001; Crooks), and extended-space log-weights already
   bound KL divergences in bidirectional Monte Carlo (Grosse et al. 2015, 2016). What we add is using the realised
   log-ratio as the complexity of a disintegrated PAC-Bayes bound with an S-dependent extended prior, along a data path

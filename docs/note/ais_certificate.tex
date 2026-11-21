@@ -211,22 +211,36 @@ a procedure, such as ``take a noisy gradient step and accept or reject it''. A k
 \textbf{invariant} if, when $x\sim\pi$, the updated $y$ is again distributed as $\pi$: running the procedure does not
 change the distribution. MCMC methods sample from a complicated $\pi$ by running such a procedure many times.
 
-\paragraph{Reversibility.} A kernel is \textbf{reversible} with respect to $\pi$ if, at equilibrium, a step looks the
-same played forwards or backwards: drawing $x\sim\pi$ and then $y\sim T(x,\cdot)$ gives a pair $(x,y)$ with the same
-distribution as $(y,x)$. In formulas (\emph{detailed balance}),
+\paragraph{Invariance and reversibility, precisely.} Fix a distribution $\pi$ (or an unnormalised measure $\gamma=Z\pi$;
+nothing below depends on the normaliser). Two properties of a kernel $T$ must be distinguished.
+\begin{itemize}[nosep]
+\item \textbf{Invariance} (\emph{global balance}): if $x\sim\pi$ and $y\sim T(x,\cdot)$, then $y\sim\pi$. In formulas,
+  $\int\pi(\dd x)\,T(x,A)=\pi(A)$ for every set $A$. The update preserves the distribution as a whole.
+\item \textbf{Reversibility} (\emph{detailed balance}): if $x\sim\pi$ and $y\sim T(x,\cdot)$, the pair $(x,y)$ has the same
+  joint distribution as the pair $(y,x)$:
+  \[
+  \pi(\dd x)\,T(x,\dd y)=\pi(\dd y)\,T(y,\dd x).
+  \]
+\end{itemize}
+Three equivalent readings of reversibility help. \emph{Film:} record the chain at equilibrium and play the film backwards;
+it is statistically indistinguishable from the original. \emph{Flows:} for any two regions $A$ and $B$, the probability
+flowing from $A$ to $B$ in one step equals the probability flowing from $B$ to $A$. \emph{Ratios:} when the step has a
+density $t(x\to y)$,
 \[
-\pi(\dd x)\,T(x,\dd y)=\pi(\dd y)\,T(y,\dd x).
+\frac{t(x\to y)}{t(y\to x)}=\frac{\pi(y)}{\pi(x)}=\frac{\gamma(y)}{\gamma(x)} .
 \]
-Reversibility implies invariance (integrate over $x$). The definition is unchanged if $\pi$ is replaced by an unnormalised
-measure $\gamma=Z\pi$, which is how we use it. For us, the useful consequence is that the ratio between the probability of
-a step $x\to y$ and of the reverse step $y\to x$ is $\gamma(y)/\gamma(x)$: a quantity we can compute, even though the
-step probabilities themselves are intractable.
+The last reading is the one we use: the ratio between the probability of a step and of the reverse step is a known
+quantity, even when the step probabilities themselves are intractable.
 
-\paragraph{How reversible kernels are built: Metropolis--Hastings.} Propose a new state $y$ by any rule that is symmetric
+Reversibility implies invariance (integrate the detailed-balance identity over $x$), but not conversely. A chain on a
+circle that always moves one notch clockwise leaves the uniform distribution invariant, yet its film played backwards
+moves anticlockwise, so it is not reversible: probability circulates around the circle instead of balancing pair by pair.
+
+\paragraph{How reversible kernels are built: Metropolis--Hastings.} Propose a new state $y$ by a rule that is symmetric
 (proposing $y$ from $x$ is as likely as proposing $x$ from $y$), and accept it with probability $\min\{1,\gamma(y)/\gamma(x)\}$;
-otherwise stay at $x$. The probability of moving from $x$ to $y$ is then proportional to $\min\{\gamma(x),\gamma(y)\}$,
-which is symmetric in $x$ and $y$; that is detailed balance. Reversibility is therefore not an extra assumption we
-impose: it is what the accept/reject step is designed to guarantee.
+otherwise stay at $x$. The probability of moving from $x$ to $y$ is then proportional to $\min\{\gamma(x),\gamma(y)\}$, which
+is symmetric in $x$ and $y$: that is detailed balance. Reversibility is therefore not an extra assumption imposed on top
+of the algorithm; it is what the accept/reject step is designed to guarantee.
 
 \paragraph{Hamiltonian Monte Carlo (HMC).} Random proposals are useless in the millions of dimensions of a network, so
 HMC (Neal, 2011) proposes using gradients. Write the target as $\gamma(w)=e^{-U(w)}$, where $U$ is an ``energy''; for a
@@ -372,14 +386,14 @@ training set as tightly as SGD would, which is the price of a small complexity t
 The certificate asks two things of the update used at each stage.
 \begin{enumerate}[nosep]
 \item \textbf{Validity.} The update must be a Markov kernel that is exactly reversible with respect to the stage target
-  $\gamma_k$, and it must be fixed before the run starts. This is what makes $C$ computable (Lemma~\ref{lem:path}).
+  $\gamma_k$ (or, more weakly, leaves it invariant; Section~\ref{sec:whyrev}), and it must be fixed before the run starts.
+  This is what makes $C$ computable (Lemma~\ref{lem:path}).
 \item \textbf{Tightness.} The update should actually learn, so that the next blocks are predicted well and the online loss,
   hence $C$, stays small.
 \end{enumerate}
-Plain SGD fails the first requirement: it is not reversible with respect to any distribution whose density we know, so its
-path ratio cannot be computed. Random-walk Metropolis meets the first but fails the second, since blind proposals in
-$4\cdot10^5$ dimensions are almost always rejected. HMC meets both: it moves using gradients, like gradient descent with
-momentum, and stays exactly reversible thanks to its accept/reject step.
+Plain SGD fails the first requirement (Section~\ref{sec:sgdhmc}). Random-walk Metropolis meets the first but fails the
+second, since blind proposals in $4\cdot10^5$ dimensions are almost always rejected. HMC meets both: it moves using
+gradients, like gradient descent with momentum, and stays exactly reversible thanks to its accept/reject step.
 
 \paragraph{What a leapfrog step is.} HMC treats the weights as the position of a ball rolling on the surface
 $U(w)=\sum_dw_d^2/(2\sigma_d^2)+\lambda L_k(w)$, with a momentum $p$. The physics is $\dot w=M^{-1}p$ (the ball moves along its
@@ -424,6 +438,57 @@ rejected many moves. Then the steps are no longer draws from fixed kernels, the 
 longer use the same kernels, and Lemma~\ref{lem:path} fails. Choosing among configurations by comparing their certificates
 is allowed and is accounted for in Section~\ref{sec:select}.
 
+\subsection{Why SGD is not reversible, and why HMC is}\label{sec:sgdhmc}
+\paragraph{One SGD step.} With a minibatch $B$ and learning rate $\eta$, an SGD step is the deterministic map
+$\varphi_B(w)=w-\eta\nabla L_B(w)$, with the minibatch drawn at random. It fails both properties of Section~\ref{sec:mcmc}.
+\begin{itemize}[nosep]
+\item \emph{Not invariant for any distribution with a density.} Near a minimum the Jacobian $I-\eta\nabla^2L_B$ has
+  determinant below $1$: each step squeezes volume, so repeated steps concentrate probability mass towards the minimum.
+  A map that concentrates mass cannot preserve a distribution with a density. In particular SGD does not leave $\gamma_k$
+  invariant; its long-run behaviour is to collapse onto (a neighbourhood of) a minimum, not to sample a known distribution.
+\item \emph{Not reversible.} For a deterministic step to be reversible, applying it twice would have to return to the
+  start, $\varphi(\varphi(w))=w$; a second descent step goes further downhill. With random minibatches the step can land on
+  only finitely many points, and from the new point $y$ no minibatch step leads back uphill to $x$. The reverse step has
+  probability zero, the forward/backward ratio is infinite, and no finite complexity can be assigned to the run.
+\end{itemize}
+Adding Gaussian noise (noisy SGD, unadjusted Langevin dynamics) gives the steps a density, so forward and backward step
+probabilities become finite and computable; the run could then be certified with the general backward kernels of
+Remark~\ref{rem:backward}. But such a chain is invariant only for an approximation of $\gamma_k$, and its path ratio keeps
+discretisation terms that do not telescope into the online loss. The accept/reject step is exactly what removes them.
+
+\paragraph{One HMC move.} Recall Algorithm~\ref{alg:hmc}: refresh the momentum, run $L$ leapfrog steps, flip the momentum
+(this is implicit in the algorithm, since the momentum is discarded and $H$ is even in $p$), accept or reject.
+
+\begin{proposition}[HMC moves are reversible]\label{prop:hmc}
+Let $\rho(w,p)\propto e^{-H(w,p)}$ with $H(w,p)=U(w)+\frac12p^\top M^{-1}p$, and $\gamma(w)\propto e^{-U(w)}$. The kernel on weights
+defined by one move of Algorithm~\ref{alg:hmc} is reversible with respect to $\gamma$, for any step size and any number of
+leapfrog steps; so is the composition of several such moves.
+\end{proposition}
+\begin{proof}
+Write a leapfrog step as $A\,B\,A$ with the two \emph{shears} $A:(w,p)\mapsto(w,\,p-\frac\varepsilon2\nabla U(w))$ and
+$B:(w,p)\mapsto(w+\varepsilon M^{-1}p,\,p)$, and let $\Phi$ be $L$ leapfrog steps and $F(w,p)=(w,-p)$ the momentum flip.
+\emph{Volume.} Each shear changes one block of coordinates by an amount that depends only on the other block, so its
+Jacobian matrix is block-triangular with identity blocks and has determinant $1$; $F$ has determinant $\pm1$. Hence
+$\Psi=F\Phi$ preserves volume.
+\emph{Involution.} $FAF=A^{-1}$, because $A$'s increment depends only on $w$, and $FBF=B^{-1}$, because flipping $p$ reverses
+$B$'s displacement. As $\Phi$ is a palindrome of shears, $F\Phi F=\Phi^{-1}$, that is, $\Psi\circ\Psi=\mathrm{id}$: running
+the leapfrog from the flipped end point retraces the trajectory back to the start.
+\emph{Detailed balance on $(w,p)$.} Accepting $z'=\Psi(z)$ with probability $\alpha(z)=\min\{1,\rho(\Psi z)/\rho(z)\}$ gives, for
+any sets $A,B$, a flow
+$\int\mathbf 1_A(z)\mathbf 1_B(\Psi z)\,\rho(z)\alpha(z)\,\dd z=\int\mathbf 1_A(z)\mathbf 1_B(\Psi z)\min\{\rho(z),\rho(\Psi z)\}\,\dd z$.
+Substituting $z=\Psi z'$ (volume-preserving, and $\Psi^{-1}=\Psi$) turns it into
+$\int\mathbf 1_A(\Psi z')\mathbf 1_B(z')\min\{\rho(\Psi z'),\rho(z')\}\,\dd z'$, the flow from $B$ to $A$. Rejections keep the
+state and are trivially symmetric. So the accept/reject step is reversible with respect to $\rho$.
+\emph{Back to weights.} Drawing a fresh momentum from its exact conditional $N(0,M)$ is reversible with respect to $\rho$
+as well. For the weight kernel $T(w,\dd w')$ obtained by refreshing, moving and discarding the momentum,
+$\gamma(\dd w)T(w,\dd w')=\int\rho(\dd w,\dd p)\,[\text{move}](\dd w',\dd p')$, and the move's detailed balance on $(w,p)$ makes this
+symmetric in $w$ and $w'$ after integrating out the momenta. Finally, a power $T^S$ of a reversible kernel is reversible.
+\end{proof}
+The ingredients map one-to-one onto what SGD lacks: a fresh random momentum (randomness with an exactly known
+distribution), a volume-preserving step that can be undone (instead of a contracting one), and the accept/reject test
+(which corrects the leapfrog's energy error exactly). The lattice version of Section~\ref{sec:exact} keeps all three
+properties exactly in finite precision.
+
 \subsection{The key identity: forward run versus reversed run}
 Write $\Qt_S$ for the distribution of the whole run $w_{0:K}=(w_0,\dots,w_K)$ produced by Algorithm~\ref{alg:ais}:
 \[
@@ -449,8 +514,7 @@ steps, of ``probability of this step forwards'' divided by ``probability of the 
 these step probabilities are intractable: they involve the probability of every momentum that leads from one state to the
 other, and the probability of rejections. Reversibility (Section~\ref{sec:mcmc}) replaces each such ratio by
 $\gamma_k(\text{new state})/\gamma_k(\text{old state})$, a ratio of known functions of the losses in which the unknown
-normalisers cancel. This is the only place where the choice of kernel matters, and it is why every kernel must have a
-Metropolis--Hastings accept/reject step: without it, the forward/backward ratio would no longer be computable.
+normalisers cancel. Section~\ref{sec:whyrev} discusses what exactly is needed and why.
 
 \begin{figure}[t]
 \centering
@@ -543,6 +607,36 @@ Assumption~\ref{as:free} suffices.}
 \paragraph{Dictionary with standard PAC-Bayes.} The prior $P$ becomes the reference path measure $\Pt_S$, which is
 data-free where it matters, at the output. The posterior $Q_S$ becomes the run's path measure $\Qt_S$. The log-density
 ratio $\log\frac{\dd Q_S}{\dd P}(w)$ in (\ref{eq:disint}) becomes $C$, which, unlike the former, is computable.
+
+\subsection{What is really needed, and why}\label{sec:whyrev}
+\paragraph{Reversibility is sufficient, not necessary.} The proof of Lemma~\ref{lem:path} uses reversibility to write the
+backward step of the reference $\Pt_S$ with the same kernel as the forward step of the run. Any invariant kernel would do, with its
+\emph{time reversal} $T_k^\ast$ in the reference: the kernel defined by $\gamma_k(\dd x)T_k(x,\dd y)=\gamma_k(\dd y)T_k^\ast(y,\dd x)$,
+which describes the forward chain run backwards at equilibrium and always exists for a $\gamma_k$-invariant $T_k$. The
+telescoping, and hence $C$, is unchanged, and $T_k^\ast$ never has to be sampled, because the reference is never run.
+
+\begin{remark}[general backward kernels]\label{rem:backward}
+More generally still, the reference may use any backward kernels $R_k$:
+$\Pt_S(\dd w_{0:K})=P(\dd w_K)\prod_kR_k(w_k,\dd w_{k-1})$ always has output marginal $P$, so Theorem~\ref{thm:cert} holds with
+$C=\log\frac{P(w_0)}{P(w_K)}+\sum_k\log\frac{t_k(w_{k-1}\to w_k)}{r_k(w_k\to w_{k-1})}$ whenever these transition densities exist and
+can be evaluated (this is the backward-kernel formalism of SMC samplers; Del Moral, Doucet and Jasra, 2006). Choosing
+$R_k=T_k^\ast$ for invariant kernels gives our $C$.
+\end{remark}
+
+\paragraph{Why we choose reversible kernels anyway.}
+\begin{enumerate}[nosep]
+\item \textbf{Computability.} Reversibility turns intractable step probabilities into known loss differences; Lemma~\ref{lem:path}
+  is this observation applied along the whole run.
+\item \textbf{A reference that stays close to the run.} Run backwards from a prior sample with the same kernels, the
+  reference looks like training played in reverse. The density ratio between the two processes, and hence $C$, is
+  therefore small exactly when training goes well; with a poorly matched backward kernel the ratio would be large even
+  for a good run.
+\item \textbf{Tightness.} An invariant kernel actually targets the partial posterior $\pi_k$, so the network becomes an
+  (approximate) posterior sample and Proposition~\ref{prop:intuition} applies: the price is the ideal KL plus Jensen gaps.
+\item \textbf{Checkability.} For a reversible kernel the backward kernel is the training kernel itself, so reversibility
+  can be tested directly: by running proposals forwards and backwards (Section~\ref{sec:exact}) and by the identity test of
+  Section~\ref{sec:experiments}. HMC provides it for free.
+\end{enumerate}
 
 \subsection{What the posterior is, and how a classifier is drawn from it}\label{sec:posterior}
 In standard PAC-Bayes one chooses a posterior family (say, Gaussians), fits its parameters, and then draws networks from
@@ -998,7 +1092,11 @@ telescopes exactly in rational arithmetic. It is rounded upward before use.
 \begin{enumerate}[nosep]
 \item Theorem~\ref{thm:cert}: is using the data-dependent reference $\Pt_S$ only through its output marginal enough? Are
   further measurability conditions needed?
-\item Lemma~\ref{lem:path}: the telescoping as an identity of measures, including rejections.
+\item Lemma~\ref{lem:path}: the telescoping as an identity of measures, including rejections; and its extension to
+  invariant (not necessarily reversible) kernels via time reversals, and to general backward kernels
+  (Section~\ref{sec:whyrev}, Remark~\ref{rem:backward}).
+\item Proposition~\ref{prop:hmc}: reversibility of the HMC move (shears, involution, detailed balance on the extended space,
+  and the passage to the weight kernel).
 \item Proposition~\ref{prop:intuition}: the perfect-mixing decomposition and the reading of $J_k$.
 \item Proposition~\ref{prop:smc}: the conditional-SMC target for resample-then-move, and outputting slot 1.
 \item Proposition~\ref{prop:exact}: odd symmetry of rounding and of floating-point multiplication; the passage from a
