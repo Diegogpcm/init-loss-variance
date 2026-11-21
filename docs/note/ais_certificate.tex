@@ -31,7 +31,7 @@
 \newcommand{\rint}{\operatorname{rint}}
 \newcommand{\review}[1]{\noindent\textcolor{red!60!black}{\textbf{[Check:]} #1}}
 
-\title{A prequential PAC-Bayes certificate for the output of a data-tempered\\ annealed importance sampler, and an exact implementation}
+\title{A prequential PAC-Bayes certificate for the output of a\\ data-tempered annealed importance sampler,\\ and an exact implementation}
 \author{Working note for internal review (generated with Claude; to be checked)}
 \date{21 November 2026}
 
@@ -101,7 +101,7 @@ mass matrix, even proposals computed from all of $S$), but are fixed before the 
 realised path. All maps $(S,x)\mapsto T_k^S(x,\cdot)$ are measurable.
 \end{assumption}
 
-\begin{algorithm}[t]
+\begin{algorithm}[h]
 \caption{Prequential AIS certificate (\texttt{experiments/ais\_cert.py}, \texttt{--P 1})}\label{alg:ais}
 \begin{algorithmic}[1]
 \State draw $w_0\sim P$; \ $c\gets 0$
