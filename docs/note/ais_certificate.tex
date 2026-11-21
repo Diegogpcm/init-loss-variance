@@ -55,7 +55,7 @@ disintegrated PAC-Bayes); Section~\ref{sec:credit} lists what is borrowed and wh
 
 \paragraph{How to read this note.} Sections~\ref{sec:setting}--\ref{sec:main} contain the main argument (Lemma~\ref{lem:path},
 Theorem~\ref{thm:cert}); the step a referee should examine most closely is marked \review{} and collected in
-Section~\ref{sec:checklist}. Code references are to the repository (branch \texttt{v2-accuracy-variance-and-pacbayes}).
+Section~\ref{sec:checklist}. Code references are to files in the project repository.
 
 \tableofcontents
 
@@ -142,8 +142,8 @@ $\Qt_S$ and $\Pt_S$ are mutually absolutely continuous and $\dd\Qt_S/\dd\Pt_S=e^
 
 \begin{proof}
 Write $P(\dd w_0)=e^{\lambda\ell_{B_1}(w_0)}\gamma_1(\dd w_0)$ (since $L_1=\ell_{B_1}$). By Assumption~\ref{as:rev},
-$\gamma_1(\dd w_0)T_1(w_0,\dd w_1)=\gamma_1(\dd w_1)T_1(w_1,\dd w_0)$. Next
-$\gamma_1(\dd w_1)=e^{\lambda\ell_{B_2}(w_1)}\gamma_2(\dd w_1)$ and reversibility of $T_2$ moves $\gamma_2$ to $w_2$.
+\[\gamma_1(\dd w_0)\,T_1(w_0,\dd w_1)=\gamma_1(\dd w_1)\,T_1(w_1,\dd w_0).\]
+Next, $\gamma_1(\dd w_1)=e^{\lambda\ell_{B_2}(w_1)}\gamma_2(\dd w_1)$, and reversibility of $T_2$ moves $\gamma_2$ to $w_2$.
 After $K$ steps,
 \[
 \Qt_S(\dd w_{0:K})=\exp\Big(\lambda\sum_{k=1}^K\ell_{B_k}(w_{k-1})\Big)\,\gamma_K(\dd w_K)\prod_{k=K}^{1}T_k(w_k,\dd w_{k-1}),
@@ -191,15 +191,17 @@ $\Qt_S$).
 \end{remark}
 
 \begin{corollary}[general targets, augmentation, temperature paths]\label{cor:general}
-Let $\gamma_0=P$ and let $\gamma_1,\dots,\gamma_K$ be any positive finite measures, possibly depending on $S$, of the form
-$\gamma_k=e^{-U_k}P$, with $T_k$ reversible w.r.t.\ $\gamma_k$. Then Theorem~\ref{thm:cert} holds with
+Let $\gamma_0=P$ and let $\gamma_1,\dots,\gamma_K$ be positive finite measures, possibly depending on $S$, of the
+form $\gamma_k=e^{-U_k}P$, with each $T_k$ reversible w.r.t.\ $\gamma_k$. Then Theorem~\ref{thm:cert} holds with
 \[
 C=\sum_{k=1}^K\big(U_k-U_{k-1}\big)(w_{k-1})\;-\;U_K(w_K),\qquad U_0\equiv 0 .
 \]
-Examples: (i) $U_k=\lambda L_k$ gives the $C$ above. (ii) Augmentation: $U_k=\lambda\sum_{i\le n_k}\frac1{|G|}\sum_{g\in G}\ell(w,gz_i)$
+Examples: (i) $U_k=\lambda L_k$ gives the $C$ above. (ii) Augmentation:
+\[U_k(w)=\lambda\sum_{i\le n_k}\frac1{|G|}\sum_{g\in G}\ell(w,gz_i)\]
 for a fixed, data-free finite set $G$ of input transformations; the certificate still concerns $\err_D$ of the 0-1 loss on
 untransformed inputs. (iii) Temperature path (Section~\ref{sec:credit}): $U_k=\beta_k\hat L(w)$ with $0=\beta_0<\dots<\beta_K$
-gives $C=\sum_k(\beta_k-\beta_{k-1})\hat L(w_{k-1})-\beta_K\hat L(w_K)$.
+gives
+\[C=\sum_k(\beta_k-\beta_{k-1})\hat L(w_{k-1})-\beta_K\hat L(w_K).\]
 \end{corollary}
 \begin{proof}
 Repeat the proof of Lemma~\ref{lem:path} with $\gamma_{k-1}=e^{U_k-U_{k-1}}\gamma_k$; the rest is unchanged.
@@ -346,9 +348,11 @@ countable space the standard argument applies with counting measure (no Jacobian
 realised exactly.
 
 \emph{The position kernel of one move is reversible w.r.t.\ $\pi_k$.} For $i\ne i'$,
-$\pi_k(i)T(i,i')=\sum_{j:\ (F\Phi(i,j))_1=i'}\pi_k(i)\mu(j)\,\alpha\big((i,j),F\Phi(i,j)\big)$. The map $j\mapsto j'=(F\Phi(i,j))_2$
-is a bijection from $\{j:(F\Phi(i,j))_1=i'\}$ onto $\{j':(F\Phi(i',j'))_1=i\}$, with inverse given by the same formula, since
-$F\Phi$ is an involution. Detailed balance on $\Z^{2d}$ turns each summand into
+\[
+\pi_k(i)\,T(i,i')=\sum_{j:\ (F\Phi(i,j))_1=i'}\pi_k(i)\,\mu(j)\,\alpha\big((i,j),F\Phi(i,j)\big).
+\]
+The map $j\mapsto j'=(F\Phi(i,j))_2$ is a bijection from $\{j:(F\Phi(i,j))_1=i'\}$ onto $\{j':(F\Phi(i',j'))_1=i\}$,
+with inverse given by the same formula, since $F\Phi$ is an involution. Detailed balance on $\Z^{2d}$ turns each summand into
 $\pi_k(i')\mu(j')\alpha\big((i',j'),(i,j)\big)$, whose sum over $j'$ is $\pi_k(i')T(i',i)$. Compositions of $S$ such moves are
 reversible as well (powers of a $\pi_k$-self-adjoint operator).
 
@@ -367,7 +371,8 @@ acceptance only.
 All tests are in \texttt{experiments/ais\_validity.py}; outputs in \texttt{results/v2/ais\_valid/}.
 
 \paragraph{(a) Path identity by brute force.} Lemma~\ref{lem:path} and the marginal property imply
-$\E_{\Qt_S}[e^{-C}g(w_K)]=\E_{w\sim P}[g(w)]$ for every $g\ge0$; in particular $\E[e^{-C}]=1$. Setup: MLP 2-4-3 (31
+\[\E_{\Qt_S}\big[e^{-C}g(w_K)\big]=\E_{w\sim P}[g(w)]\quad\text{for every } g\ge0;\]
+in particular $\E[e^{-C}]=1$. Setup: MLP 2-4-3 (31
 parameters), $n=8$, stages $\{2,4,8\}$, $\lambda=0.3$, two HMC moves of five leapfrog steps per stage, $2\cdot10^6$
 independent runs per case, ground truth from $4\cdot10^6$ prior draws. Heavy-tailed weights bias the sample mean
 \emph{downwards}; validity only needs $\E[e^{-C}f(w_K)]\le\E_Pf$ for $f\ge0$, so the dangerous direction is
@@ -416,14 +421,14 @@ steps per stage. The selection-adjusted values ($\delta/100$) differ by at most 
 \begin{center}\small
 \begin{tabular}{@{}llcccc@{}}
 \toprule
-data & model / sampler & $\lambda$ & train & test & certificate\\
+data & model, sampler & $\lambda$ & train & test & certificate\\
 \midrule
 MNIST & MLP on pixels, AIS & 0.5 & 0.037 & 0.043 & 0.167\\
-MNIST & MLP 833-100-10 on Gabor, AIS, two seeds & 0.25 & 0.023 & 0.020 & 0.0726, 0.0726\\
-MNIST & same, exact lattice, two seeds & 0.25 & 0.023 & 0.021 & 0.0732, 0.0716\\
+MNIST & Gabor + MLP 833-100-10, AIS, 2 seeds & 0.25 & 0.023 & 0.020 & 0.0726, 0.0726\\
+MNIST & same, exact lattice, 2 seeds & 0.25 & 0.023 & 0.021 & 0.0732, 0.0716\\
 MNIST & same, SMC, 8 particles & 0.25 & 0.024 & 0.021 & 0.0705\\
-MNIST & MLP 3969-100-10 on 2nd-order scattering, AIS & 0.25 & 0.016 & 0.015 & \textbf{0.0648}\\
-Fashion & MLP 833-100-10 on Gabor, AIS / exact & 0.25 & 0.125 / 0.122 & 0.126 & 0.2207 / \textbf{0.2206}\\
+MNIST & scattering + MLP 3969-100-10, AIS & 0.25 & 0.016 & 0.015 & \textbf{0.0648}\\
+Fashion & Gabor + MLP, AIS / exact & 0.25 & 0.125 / 0.122 & 0.126 & 0.2207 / \textbf{0.2206}\\
 \bottomrule
 \end{tabular}
 \end{center}

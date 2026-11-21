@@ -5,7 +5,7 @@ assumptions, the path identity and the certificate with full proofs, the SMC ext
 hypotheses, the exact lattice implementation, validity tests, results, related work and credit, and a checklist of the
 steps to scrutinise.
 
-Build (standard TeX Live packages only; no .bib file):
+Build (standard TeX Live packages only; no .bib file). Locally: `tectonic ais_certificate.tex` (installed via Homebrew), or:
 
     pdflatex ais_certificate.tex && pdflatex ais_certificate.tex   # second pass fills the table of contents
 
