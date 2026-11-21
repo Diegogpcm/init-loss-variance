@@ -574,3 +574,57 @@ Contraction strong enough to forget faster than you optimise is regularisation s
 **Verdict.** Lyapunov / contraction arguments give a time-uniform information bound only where forgetting time ≈
 optimisation time, so they buy nothing for the certificate. In the non-convex case the constants are exp(Θ(D²/s²)).
 Route closed.
+
+## 17. Prequential certificate for the final network via data-tempered AIS [ours: construction + first results]
+**Construction.** Prior P = N(0, diag) (data-free). Fix a random order of S and stage boundaries 0 = n₀ < … < n_K = n.
+Targets: γ_k(w) = P(w)·exp(−λ L_k(w)), where L_k is the cross-entropy summed over the first n_k points.
+
+Procedure: draw w₀ ~ P. At stage k, score the new block at the current sample, then apply MCMC moves reversible
+w.r.t. γ_k (Metropolis-adjusted HMC). Kernel parameters may depend on S and k, but not on the path.
+
+**Extended-space prior.** P̃ = P(w_K)·Π_k T̃_k(w_k → w_{k−1}), with T̃_k the γ_k-reversal of T_k (= T_k by detailed
+balance). Telescoping gives
+
+  ln dQ̃/dP̃ (path) = λ·[ Σ_k ℓ_{block k}(w_{k−1}) − L_K(w_K) ] =: C
+
+i.e. λ × (prequential log-loss of the realised run − final training log-loss).
+
+**Certificate.** P̃'s w_K-marginal is the data-free P, so the disintegrated PAC-Bayes-kl bound applies on path space.
+With probability ≥ 1 − δ over S and the run:
+
+  kl(err_S(w_K) ‖ err_D(w_K)) ≤ (C + ln(2√n/δ))/n
+
+- The certified predictor is the single final network, used deterministically.
+- Data reuse inside a stage is free: invariant moves cost nothing, and each point is charged once, when it arrives.
+- The posterior reweights the prior rather than shifting it, so there is no distance-from-init penalty (unlike §13).
+- Mixing quality affects only tightness, not validity.
+- Caveat: exactness of Metropolis–Hastings in float64 (the usual numerical caveat).
+
+**Related.** "Excess Description Length" (arXiv 2601.04728, Jan 2026) studies the same prequential-minus-final quantity
+for SGD-trained online learners, with bounds on *expected* generalisation. Making it a high-probability certificate
+for the final network needs the invariant-kernel / extended-space construction above.
+Other links: Germain et al. 2016 (PAC-Bayes ↔ marginal likelihood); Blier & Ollivier 2018 (prequential MDL);
+Valle-Pérez et al. 2019 (prior volume; GP-approximated, not certified); Neal 2001 (AIS).
+
+**Results: MNIST, MLP 784-100-10, prior N(0, 2/fan_in), full 60k, δ = 0.025** (`experiments/ais_cert.py`,
+`results/v2/ais_mnist60k_*.json`):
+
+| stages | λ | train | test | prequential CE | final CE | C/n | **cert** |
+|---|---|---|---|---|---|---|---|
+| 1000-point blocks | 1 | 0.024 | 0.031 | 0.252 | 0.089 | 0.163 | 0.217 |
+| 1000-point blocks | 2 | 0.014 | 0.026 | 0.207 | 0.053 | 0.308 | 0.309 |
+| geometric 10, 20, 40, … then 1000 | 1 | 0.025 | 0.033 | 0.229 | 0.089 | 0.140 | 0.199 |
+| geometric | 0.5 | 0.038 | 0.040 | 0.304 | 0.141 | 0.082 | **0.167** |
+
+Context: our DP-SGD certificate is 0.084 (linear on features); Gaussian PAC-Bayes on a plain network 0.267; published
+data-free baselines ≈ 0.3.
+
+**Reading.** C/n is λ × the area under the log-loss learning curve minus the final training loss. The certificate is
+good exactly when the model learns fast from few examples, which is a direct, certified form of "sample efficiency
+explains generalisation".
+- More HMC compute per stage does not move it (pilots: 20× compute, same prequential CE). The posterior's
+  single-sample learning curve is the limit, not mixing.
+- Levers:
+  - architecture / prior with a faster early learning curve (CNN; data-free features);
+  - particle mixtures (SMC; the online term becomes the predictive mixture's log-loss);
+  - step size at the smallest stages (acceptance was 0 for n_k ≤ 20).

@@ -230,6 +230,15 @@ the author (D.G.-P.) reports having had an independent PAC-Bayes idea, not yet w
       exp(Θ(D²/s²)).
     - Route closed. The Riemannian / pullback-metric posterior (route 3 of the discussion) remains.
 
+35. **Prequential AIS certificate (author: "mix PAC-Bayes into existing ideas ... bounding the uncertainty").** theory.md §17.
+    - Construction: data-tempered annealed importance sampling with Metropolis-adjusted HMC. Its extended-space
+      log-ratio λ(prequential − final log-loss) is a valid disintegrated PAC-Bayes complexity for the single final
+      network.
+    - MNIST MLP, full 60k: certificate 0.217 (λ = 1), then 0.167 with geometric early stages and λ = 0.5 (test 0.040).
+      Beats the Gaussian / data-free baselines (≈ 0.27–0.3); does not beat the DP-SGD certificate (0.084).
+    - The limit is the single-sample learning curve, not MCMC compute.
+    - Closest prior work: Excess Description Length (arXiv 2601.04728), in expectation only and for SGD.
+
 ## Next steps (as of 2026-11-20, updated after entry 32)
 0. DP/MI route: (a) DONE via L-CL-Z Thm 8 (entry 27); structured multi-epoch tail examined in entry 28: worth
    ≤ 0.008 at measured gradient diversity, dropped. (a′) individual (Rényi-filter) accounting: tried, no gain (entry 29); (b) CIFAR-10 with data-free features (ScatterNet) against
