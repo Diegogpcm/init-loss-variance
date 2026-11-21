@@ -108,6 +108,18 @@ be the prequential quantity above: $\lambda$ times the online loss of the run (e
 used it) minus the final training loss. PAC-Bayes on path space then gives a certificate for the single output network.
 Nothing needs to mix; poor mixing only makes the certificate looser.
 
+\paragraph{A certificate for a deterministic network.} Data-free certificates in the Gaussian PAC-Bayes line
+(P\'erez-Ortiz et al., 2021; Garc\'ia-P\'erez et al., 2025) certify a \emph{stochastic} classifier: every prediction uses a
+fresh draw of weights from a Gaussian around the trained network. That classifier is not what anyone deploys (its
+predictions are random, and the deterministic mean network is not certified); its training error must itself be estimated
+by sampling many networks, which adds a second concentration term; and the noise needed for a small KL degrades its
+accuracy. Our certificate covers a single fixed network, the trained weights, used deterministically, with exactly
+computed training error. The only randomness is in training (initialisation, momenta, accept/reject coins), as for any
+network trained from a random initialisation. Disintegrated PAC-Bayes bounds for a single draw are not new in themselves
+(Rivasplata et al., 2020; Viallard et al., 2024b), and compression bounds also certify a deterministic network (Lotfi et
+al., 2022); what is new here is that the certified network is the output of training itself rather than a random
+perturbation of it, and that its complexity is computed for that output without fitting any posterior.
+
 \paragraph{Exactness.} A certificate is a statement about exact probability ratios. Floating-point MCMC breaks those
 ratios in a way that no small correction repairs (Section~\ref{sec:exact}), as is known for differential privacy
 (Mironov, 2012). We therefore also give an implementation on integer lattices with exact discrete sampling, for which the
@@ -115,8 +127,9 @@ hypotheses hold bit for bit.
 
 \paragraph{Contributions.}
 \begin{enumerate}[nosep]
-\item A disintegrated PAC-Bayes certificate for the output of an annealed MCMC run, whose complexity is the realised
-  log-ratio between the run and a time-reversed reference run (Theorem~\ref{thm:cert}). The reference depends on the
+\item A certificate for the deterministic network that training actually produces, with exact empirical error and no
+  posterior noise or sampling: a disintegrated PAC-Bayes bound for the output of an annealed MCMC run, whose complexity is
+  the realised log-ratio between the run and a time-reversed reference run (Theorem~\ref{thm:cert}). The reference depends on the
   training set, which a PAC-Bayes prior may not, but only its data-free marginal at the output enters.
 \item A data path that charges each training point once, when it arrives, so the complexity is a prequential code
   length; a decomposition showing it upper-bounds the ideal Gibbs-posterior KL by per-block Jensen gaps
@@ -1182,6 +1195,7 @@ telescopes exactly in rational arithmetic. It is rounded upward before use.
 \bibitem{po} M.~P\'erez-Ortiz, O.~Rivasplata, J.~Shawe-Taylor, C.~Szepesv\'ari. Tighter risk certificates for neural networks. \emph{JMLR}, 2021.
 \bibitem{riva} O.~Rivasplata, I.~Kuzborskij, C.~Szepesv\'ari, J.~Shawe-Taylor. PAC-Bayes analysis beyond the usual bounds. \emph{NeurIPS}, 2020.
 \bibitem{seeger} M.~Seeger. PAC-Bayesian generalisation error bounds for Gaussian process classification. \emph{JMLR}, 2002.
+\bibitem{viallardb} P.~Viallard, P.~Germain, A.~Habrard, E.~Morvant. A general framework for the practical disintegration of PAC-Bayesian bounds. \emph{Machine Learning}, 2024 (arXiv:2102.08649) [cited as Viallard et al., 2024b].
 \bibitem{viallard} P.~Viallard, R.~Emonet, A.~Habrard, E.~Morvant, V.~Zantedeschi. Leveraging PAC-Bayes theory and Gibbs distributions for generalization bounds with complexity measures. \emph{AISTATS}, 2024.
 \end{thebibliography}
 \end{document}
