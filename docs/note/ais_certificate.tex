@@ -222,6 +222,16 @@ nothing below depends on the normaliser). Two properties of a kernel $T$ must be
   \pi(\dd x)\,T(x,\dd y)=\pi(\dd y)\,T(y,\dd x).
   \]
 \end{itemize}
+\emph{Invariance is about the distribution, not about the individual weights.} An update always changes the weights. To
+see what is preserved, imagine $10{,}000$ copies of the network, each with weights drawn independently from $\pi$, and
+apply the update to every copy (each with its own randomness). Every copy moves to new weights, but the histogram of the
+copies keeps the same shape: copies that leave a region are replaced, on average, by copies that enter it, just as
+shuffling an already shuffled deck moves every card but leaves the deck ``uniformly shuffled''. For our single network,
+invariance means: if the network is already a typical sample from $\pi$, then after the update it is still a typical
+sample from $\pi$, only a different one. SGD fails exactly this: applied to the $10{,}000$ copies, it slides them downhill
+and piles them up at minima, so the histogram shrinks. Reversibility is the stronger, pairwise version: for any two regions
+$A$ and $B$, as many copies move from $A$ to $B$ in one step as from $B$ to $A$.
+
 Three equivalent readings of reversibility help. \emph{Film:} record the chain at equilibrium and play the film backwards;
 it is statistically indistinguishable from the original. \emph{Flows:} for any two regions $A$ and $B$, the probability
 flowing from $A$ to $B$ in one step equals the probability flowing from $B$ to $A$. \emph{Ratios:} when the step has a
