@@ -252,6 +252,27 @@ otherwise stay at $x$. The probability of moving from $x$ to $y$ is then proport
 is symmetric in $x$ and $y$: that is detailed balance. Reversibility is therefore not an extra assumption imposed on top
 of the algorithm; it is what the accept/reject step is designed to guarantee.
 
+\paragraph{Why the histogram stays the same: a numerical example.} Take two equal-sized regions $A$ and $B$ that the
+proposal pairs with each other, with $100$ copies per unit volume at $A$ (higher density) and $30$ at $B$. A move uphill is
+always accepted, so all $30$ copies at $B$ move to $A$. A move downhill is accepted with probability
+(density at destination)/(density at origin) $=0.3$, so $30$ of the $100$ copies at $A$ move to $B$. Thirty leave $A$ and
+thirty arrive: both counts are unchanged, and the same happens for every pair of regions. The acceptance probability is
+chosen exactly so that the two flows are equal.
+
+For this to work the proposal must pair regions up, as above, and must not distort volumes, so that ``copies per unit
+volume'' means the same at both ends. The HMC proposal (leapfrog followed by a momentum flip) does both: it is a
+\emph{mirror}, since running it from the end point leads exactly back to the start, and it \emph{preserves volume}, so a
+small cloud of copies lands on a cloud of the same size. SGD fails both: it squeezes clouds as they slide downhill, and
+nothing comes back up. The ``density'' in the accept rule is $e^{-H}$ with $H=U_k+\frac12p^\top M^{-1}p$ and $U_k$ the
+weight decay plus $\lambda$ times the loss on the data seen so far, so the histogram that stage $k$ preserves is that of the
+stage-$k$ posterior $\pi_k$. Proposition~\ref{prop:hmc} turns this picture into a proof.
+
+\paragraph{Invariance is a property of the update rule, not a claim that the run is at equilibrium.} In our run the
+histogram does change, and should: when block $k$ is added, the network is roughly a sample from $\pi_{k-1}$, not $\pi_k$,
+and the moves pull it towards $\pi_k$. Invariance says only that $\pi_k$ is the distribution the moves would leave
+unchanged, a fixed point the chain moves towards. The certificate needs this property of the rule, not that the chain has
+reached $\pi_k$; this is why poor mixing makes the certificate looser but never invalid.
+
 \paragraph{Hamiltonian Monte Carlo (HMC).} Random proposals are useless in the millions of dimensions of a network, so
 HMC (Neal, 2011) proposes using gradients. Write the target as $\gamma(w)=e^{-U(w)}$, where $U$ is an ``energy''; for a
 tempered posterior, $U(w)=\sum_d w_d^2/(2\sigma_d^2)+\lambda L(w)$: weight decay from the Gaussian prior plus the scaled
